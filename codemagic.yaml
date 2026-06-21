@@ -1,6 +1,3 @@
-# codemagic.yaml
-# NavGuide - UENR Smart Campus Navigation
-
 workflows:
   release-android:
     name: Release Android Build
@@ -8,11 +5,12 @@ workflows:
     environment:
       flutter: stable
     scripts:
+      - name: Create google-services.json
+        script: |
+          echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
       - name: Get Flutter packages
         script: flutter pub get
-      
       - name: Build Android APK
         script: flutter build apk --release --split-per-abi
-    
     artifacts:
       - build/app/outputs/flutter-apk/*.apk
