@@ -1,0 +1,18 @@
+# codemagic.yaml
+# NavGuide - UENR Smart Campus Navigation
+
+workflows:
+  release-android:
+    name: Release Android Build
+    max_build_duration: 30
+    environment:
+      flutter: stable
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+      
+      - name: Build Android APK
+        script: flutter build apk --release --split-per-abi
+    
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
