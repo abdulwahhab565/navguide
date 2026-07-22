@@ -1,19 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../main.dart' show AppTheme;
-
-class GuidedTourStep {
-  final String title;
-  final String description;
-  final Alignment cardAlignment;
-  final IconData icon;
-
-  GuidedTourStep({
-    required this.title,
-    required this.description,
-    required this.cardAlignment,
-    required this.icon,
-  });
-}
+import '../main.dart' show AppTheme;
 
 class GuidedTourOverlay extends StatefulWidget {
   final VoidCallback onComplete;
@@ -29,256 +15,182 @@ class GuidedTourOverlay extends StatefulWidget {
   State<GuidedTourOverlay> createState() => _GuidedTourOverlayState();
 }
 
-class _GuidedTourOverlayState extends State<GuidedTourOverlay>
-    with TickerProviderStateMixin {
-  int _currentStep = 0;
-  late final PageController _pageController;
-  late final AnimationController _exitController;
-  late final Animation<double> _exitAnimation;
-  bool _isExiting = false;
+class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
+  final PageController _pageCtrl = PageController();
+  int _currentPage = 0;
 
-  final List<GuidedTourStep> _steps = [
-    GuidedTourStep(
-      title: 'Search Facilities',
-      description: 'Tap the top search bar to find academic blocks, auditoriums, clinics, and restrooms across campus.',
-      cardAlignment: Alignment.topCenter,
+  final List<_TourStep> _steps = const [
+    _TourStep(
+      icon: Icons.map_rounded,
+      title: 'Welcome to NavGuide',
+      description: 'Your intelligent campus navigation companion for UENR Sunyani. Discover buildings, lecture halls, and services.',
+    ),
+    _TourStep(
       icon: Icons.search_rounded,
+      title: 'Search & Explore',
+      description: 'Tap the top search bar to quickly locate any campus building, administration block, cafeteria, or health center.',
     ),
-    GuidedTourStep(
-      title: 'Navigate to Places',
-      description: 'Tap the "Route" floating button on the right to choose a building and start walking navigation.',
-      cardAlignment: Alignment.centerRight,
-      icon: Icons.add_location_rounded,
+    _TourStep(
+      icon: Icons.directions_walk_rounded,
+      title: 'Turn-by-Turn Routes',
+      description: 'Select any destination and tap "Route" for real-time turn-by-turn walking instructions with smooth camera tracking.',
     ),
-    GuidedTourStep(
-      title: 'Weightless Auto-Rotate',
-      description: 'Tap the compass/rotation button to toggle map-following. The map will rotate face-forward as you move.',
-      cardAlignment: Alignment.centerRight,
-      icon: Icons.navigation_rounded,
-    ),
-    GuidedTourStep(
-      title: 'Profile & Settings',
-      description: 'Tap your profile avatar in the top right to manage bookmarks, log out, or calibrate GPS offsets.',
-      cardAlignment: Alignment.topRight,
-      icon: Icons.person_outline_rounded,
+    _TourStep(
+      icon: Icons.my_location_rounded,
+      title: 'Compass & Recenter',
+      description: 'Use the floating map controls on the right to recenter on your position or toggle compass rotation mode.',
     ),
   ];
 
   @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(initialPage: 0);
-    _exitController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-    _exitAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _exitController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
   void dispose() {
-    _pageController.dispose();
-    _exitController.dispose();
+    _pageCtrl.dispose();
     super.dispose();
-  }
-
-  void _fadeOutAndComplete(VoidCallback callback) {
-    if (_isExiting) return;
-    setState(() => _isExiting = true);
-    _exitController.forward().then((_) {
-      callback();
-    });
-  }
-
-  void _skip() {
-    _fadeOutAndComplete(widget.onSkip);
-  }
-
-  void _next() {
-    if (_currentStep < _steps.length - 1) {
-      setState(() {
-        _currentStep++;
-      });
-      _pageController.animateToPage(
-        _currentStep,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
-    } else {
-      _fadeOutAndComplete(widget.onComplete);
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isSmallScreen = screenHeight < 700;
-
-    return AnimatedBuilder(
-      animation: _exitAnimation,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _exitAnimation.value,
-          child: child,
-        );
-      },
-      child: Container(
-        color: Colors.black.withValues(alpha: 0.80),
-        child: Center(
-          child: FractionallySizedBox(
-            widthFactor: 0.88,
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A2E),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: AppTheme.primaryLight.withValues(alpha: 0.3),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primary.withValues(alpha: 0.15),
-                    blurRadius: 20,
-                    spreadRadius: 2,
+    return Scaffold(
+      backgroundColor: Colors.black.withValues(alpha: 0.8),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Align(
+                alignment: Alignment.topRight,
+                child: TextButton(
+                  onPressed: widget.onSkip,
+                  child: const Text(
+                    'Skip Tour',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
-                ],
+                ),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Icon
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [AppTheme.primary, AppTheme.primaryLight],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primary.withValues(alpha: 0.3),
-                          blurRadius: 8,
+            ),
+            Expanded(
+              child: PageView.builder(
+                controller: _pageCtrl,
+                itemCount: _steps.length,
+                onPageChanged: (index) {
+                  setState(() => _currentPage = index);
+                },
+                itemBuilder: (context, index) {
+                  final step = _steps[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [AppTheme.primary, AppTheme.primaryLight],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primary.withValues(alpha: 0.5),
+                                blurRadius: 24,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Icon(step.icon, size: 52, color: Colors.white),
+                        ),
+                        const SizedBox(height: 36),
+                        Text(
+                          step.title,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          step.description,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 15,
+                            height: 1.5,
+                          ),
                         ),
                       ],
                     ),
-                    child: Icon(
-                      _steps[_currentStep].icon,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Title
-                  Text(
-                    _steps[_currentStep].title,
-                    style: TextStyle(
-                      color: AppTheme.primaryLight,
-                      fontSize: isSmallScreen ? 18 : 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  // Description
-                  Text(
-                    _steps[_currentStep].description,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.80),
-                      fontSize: isSmallScreen ? 13 : 14,
-                      height: 1.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  // Progress dots
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: List.generate(
                       _steps.length,
-                          (idx) => Container(
-                        width: idx == _currentStep ? 16 : 8,
-                        height: 8,
+                          (i) => AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
                         margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: _currentPage == i ? 24 : 8,
+                        height: 8,
                         decoration: BoxDecoration(
-                          color: idx == _currentStep
+                          color: _currentPage == i
                               ? AppTheme.primaryLight
-                              : Colors.white24,
+                              : Colors.white.withValues(alpha: 0.25),
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  // Buttons
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton(
-                          onPressed: _skip,
-                          child: Text(
-                            'Skip',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.5),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        if (_currentPage < _steps.length - 1) {
+                          _pageCtrl.nextPage(
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeInOut,
+                          );
+                        } else {
+                          widget.onComplete();
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [AppTheme.primary, AppTheme.primaryLight],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.primary.withValues(alpha: 0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: _next,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Text(
-                              _currentStep == _steps.length - 1
-                                  ? 'Get Started'
-                                  : 'Next',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
+                      child: Text(
+                        _currentPage == _steps.length - 1 ? 'Get Started' : 'Next',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
+}
+
+class _TourStep {
+  final IconData icon;
+  final String title;
+  final String description;
+
+  const _TourStep({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
 }

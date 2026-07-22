@@ -1,64 +1,37 @@
 import 'package:flutter/material.dart';
-import '../../main.dart' show AppTheme;
-import '../../models/campus_location.dart';
-import '../../presenters/search_presenter.dart';
+import '../main.dart' show AppTheme;
+import '../models/campus_location.dart';
+import '../services/places_service.dart';
 
-/// Full-screen search delegate for campus facilities.
-/// Implements [SearchViewContract] from SearchPresenter.
-class CampusSearchDelegate extends SearchDelegate<CampusLocation?>
-    implements SearchViewContract {
-  final List<CampusLocation> allLocations;
-  late final SearchPresenter _presenter;
-  List<CampusLocation> _suggestions = [];
-  BuildContext? _context;
-
-  CampusSearchDelegate({required this.allLocations}) {
-    _presenter = SearchPresenter(this, mockLocations: allLocations);
-    _suggestions = allLocations.take(5).toList();
-  }
-
-  // ── SearchViewContract ────────────────────────────────────────
-  @override
-  void updateSuggestions(List<CampusLocation> suggestions) {
-    _suggestions = suggestions;
-  }
+class CampusSearchDelegate extends SearchDelegate<CampusLocation?> {
+  final PlacesService _placesService = PlacesService();
 
   @override
-  void onLocationSelected(CampusLocation location) {
-    if (_context != null) close(_context!, location);
-  }
-
-  // ── SearchDelegate overrides ──────────────────────────────────
-  @override
-  String get searchFieldLabel => 'Search buildings, halls, services…';
-
-  @override
-  TextStyle get searchFieldStyle => const TextStyle(
-        color: AppTheme.onSurface,
-        fontSize: 15,
-      );
+  String get searchFieldLabel => 'Search UENR buildings, halls...';
 
   @override
   ThemeData appBarTheme(BuildContext context) {
     return Theme.of(context).copyWith(
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF1A1A2E),
-        foregroundColor: AppTheme.onSurface,
+        backgroundColor: Color(0xFF1E2030),
         elevation: 0,
       ),
       inputDecorationTheme: const InputDecorationTheme(
         border: InputBorder.none,
-        hintStyle: TextStyle(color: Color(0xFF6B7080)),
+        hintStyle: TextStyle(color: Colors.white38, fontSize: 16),
+      ),
+      textTheme: const TextTheme(
+        titleLarge: TextStyle(color: AppTheme.onSurface, fontSize: 16),
       ),
     );
   }
 
   @override
-  List<Widget> buildActions(BuildContext context) {
+  List<Widget>? buildActions(BuildContext context) {
     return [
       if (query.isNotEmpty)
         IconButton(
-          icon: const Icon(Icons.clear_rounded),
+          icon: const Icon(Icons.clear_rounded, color: Colors.white70),
           onPressed: () {
             query = '';
             showSuggestions(context);
@@ -68,127 +41,123 @@ class CampusSearchDelegate extends SearchDelegate<CampusLocation?>
   }
 
   @override
-  Widget buildLeading(BuildContext context) {
+  Widget? buildLeading(BuildContext context) {
     return IconButton(
-      icon: const Icon(Icons.arrow_back_ios_new_rounded),
+      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white70),
       onPressed: () => close(context, null),
     );
   }
 
   @override
   Widget buildResults(BuildContext context) {
-    _context = context;
-    _presenter.search(query);
-    return _buildList(context, isResults: true);
+    return _buildSearchResultsList(context);
   }
 
   @override
   Widget buildSuggestions(BuildContext context) {
-    _context = context;
-    _presenter.search(query);
-    return _buildList(context, isResults: false);
+    return _buildSearchResultsList(context);
   }
 
-  Widget _buildList(BuildContext context, {required bool isResults}) {
-    final items = _suggestions;
-    if (items.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off_rounded,
-                size: 64, color: Colors.white.withValues(alpha: 0.2)),
-            const SizedBox(height: 16),
-            Text(
-              'No results for "$query"',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.4),
-                fontSize: 15,
+  Widget _buildSearchResultsList(BuildContext context) {
+    return Container(
+      color: AppTheme.surface,
+      child: FutureBuilder<List<CampusLocation>>(
+        future: _placesService.searchCampusPlaces(query),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryLight),
               ),
-            ),
-          ],
-        ),
-      );
-    }
+            );
+          }
 
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: items.length,
-      separatorBuilder: (_, __) => Divider(
-        color: Colors.white.withValues(alpha: 0.06),
-        height: 1,
-        indent: 72,
-      ),
-      itemBuilder: (context, index) {
-        final loc = items[index];
-        return ListTile(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          leading: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: _catColor(loc.category).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: _catColor(loc.category).withValues(alpha: 0.4),
-                  width: 1),
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Error searching locations: ${snapshot.error}',
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            );
+          }
+
+          final results = snapshot.data ?? [];
+
+          if (results.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.search_off_rounded, size: 64, color: Colors.white24),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No campus locations found for "$query"',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            itemCount: results.length,
+            separatorBuilder: (_, __) => Divider(
+              color: Colors.white.withValues(alpha: 0.05),
+              height: 1,
+              indent: 72,
             ),
-            child: Icon(_catIcon(loc.category),
-                color: _catColor(loc.category), size: 22),
-          ),
-          title: Text(
-            loc.name,
-            style: const TextStyle(
-                color: AppTheme.onSurface,
-                fontWeight: FontWeight.w600,
-                fontSize: 14.5),
-          ),
-          subtitle: Text(
-            loc.category,
-            style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.45), fontSize: 12),
-          ),
-          trailing: const Icon(Icons.chevron_right_rounded,
-              color: Colors.white38, size: 20),
-          onTap: () => _presenter.selectLocation(loc),
-        );
-      },
+            itemBuilder: (context, index) {
+              final loc = results[index];
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                  ),
+                  child: Icon(
+                    _iconForCategory(loc.category),
+                    color: AppTheme.primaryLight,
+                    size: 22,
+                  ),
+                ),
+                title: Text(
+                  loc.name,
+                  style: const TextStyle(
+                    color: AppTheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+                subtitle: Text(
+                  '${loc.category}${loc.buildingCode != null ? ' • ${loc.buildingCode}' : ''}',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.45),
+                    fontSize: 13,
+                  ),
+                ),
+                trailing: const Icon(Icons.north_west_rounded, color: Colors.white30, size: 18),
+                onTap: () => close(context, loc),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
-  // ── Helpers ───────────────────────────────────────────────────
-  static IconData _catIcon(String cat) {
+  IconData _iconForCategory(String cat) {
     switch (cat.toLowerCase()) {
-      case 'academic':
-        return Icons.school_rounded;
-      case 'administration':
-        return Icons.account_balance_rounded;
-      case 'services':
-        return Icons.support_agent_rounded;
-      case 'amenities':
-        return Icons.restaurant_rounded;
-      case 'restrooms':
-        return Icons.wc_rounded;
-      default:
-        return Icons.location_on_rounded;
-    }
-  }
-
-  static Color _catColor(String cat) {
-    switch (cat.toLowerCase()) {
-      case 'academic':
-        return Colors.blue.shade400;
-      case 'administration':
-        return Colors.purple.shade300;
-      case 'services':
-        return Colors.teal.shade300;
-      case 'amenities':
-        return Colors.orange.shade400;
-      case 'restrooms':
-        return Colors.cyan.shade300;
-      default:
-        return AppTheme.primaryLight;
+      case 'academic': return Icons.school_rounded;
+      case 'administration': return Icons.account_balance_rounded;
+      case 'services': return Icons.support_agent_rounded;
+      case 'amenities': return Icons.restaurant_rounded;
+      case 'restrooms': return Icons.wc_rounded;
+      default: return Icons.location_on_rounded;
     }
   }
 }

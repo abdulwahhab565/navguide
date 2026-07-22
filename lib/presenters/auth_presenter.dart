@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
 import '../services/firestore_service.dart';
 import '../models/user_model.dart';
@@ -6,196 +7,161 @@ import 'package:firebase_auth/firebase_auth.dart';
 abstract class AuthViewContract {
   void showLoading();
   void hideLoading();
-  void showError(String message);
-  void onAuthSuccess();
+  void onAuthSuccess(UserModel user);
+  void onAuthError(String message);
 }
 
 class AuthPresenter {
-  final AuthViewContract _view;
   final AuthService _authService = AuthService();
   final FirestoreService _firestoreService = FirestoreService();
+  AuthViewContract? _view;
 
-  AuthPresenter(this._view);
-
-  // ── CHECK IF USER EXISTS ──────────────────────────────────────
-  void checkCurrentUser() {
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      print('✅ Current user exists: ${user.email} (UID: ${user.uid})');
-    } else {
-      print('❌ No user is currently signed in');
-    }
+  void attachView(AuthViewContract view) {
+    _view = view;
   }
 
-  // ── LOGIN ──────────────────────────────────────────────────────
-  Future<void> login(String email, String password) async {
-    final String trimmedEmail = email.trim();
-    final String trimmedPassword = password.trim();
+  void detachView() {
+    _view = null;
+  }
 
-    if (trimmedEmail.isEmpty || trimmedPassword.isEmpty) {
-      _view.showError('Please fill in all credentials.');
+  Future<void> login(String email, String password) async {
+    if (email.trim().isEmpty || password.isEmpty) {
+      _view?.onAuthError('Please enter both email and password.');
       return;
     }
 
-    _view.showLoading();
+    _view?.showLoading();
     try {
-      await _authService.signInWithEmailAndPassword(
-        email: trimmedEmail,
-        password: trimmedPassword,
+      final credential = await _authService.signInWithEmailAndPassword(
+        email: email,
+        password: password,
       );
-      _view.hideLoading();
-      await Future.delayed(const Duration(milliseconds: 300));
-      _view.onAuthSuccess();
-    } on FirebaseAuthException catch (e) {
-      _view.hideLoading();
-      _view.showError(_getLoginErrorMessage(e));
+
+      final firebaseUser = credential.user;
+      if (firebaseUser != null) {
+        UserModel? userProfile = await _firestoreService.getUserProfile(firebaseUser.uid);
+
+        userProfile ??= UserModel(
+          uid: firebaseUser.uid,
+          email: firebaseUser.email ?? email,
+          displayName: firebaseUser.displayName ?? _extractNameFromEmail(email),
+          role: 'Student',
+          createdAt: DateTime.now(),
+        );
+
+        _view?.hideLoading();
+        _view?.onAuthSuccess(userProfile);
+      } else {
+        _view?.hideLoading();
+        _view?.onAuthError('Failed to retrieve user data after login.');
+      }
     } catch (e) {
-      _view.hideLoading();
-      _view.showError('An unexpected error occurred. Please try again.');
+      _view?.hideLoading();
+      _view?.onAuthError(e.toString());
     }
   }
 
-  // ── REGISTER ───────────────────────────────────────────────────
   Future<void> register({
     required String email,
     required String password,
     required String confirmPassword,
     required String displayName,
-    required String role,
+    String role = 'Student',
   }) async {
-    // Trim all inputs
-    final String trimmedEmail = email.trim();
-    final String trimmedPassword = password.trim();
-    final String trimmedName = displayName.trim();
-
-    // ── Validation ──────────────────────────────────────────────
-    if (trimmedEmail.isEmpty) {
-      _view.showError('Email is required.');
+    if (displayName.trim().isEmpty) {
+      _view?.onAuthError('Please enter your full name.');
       return;
     }
-    if (trimmedName.isEmpty) {
-      _view.showError('Full name is required.');
+    if (email.trim().isEmpty) {
+      _view?.onAuthError('Please enter an email address.');
       return;
     }
-    if (role.isEmpty) {
-      _view.showError('Please select a role.');
+    if (password.isEmpty) {
+      _view?.onAuthError('Please enter a password.');
       return;
     }
-    if (trimmedPassword.isEmpty) {
-      _view.showError('Password is required.');
+    if (password.length < 6) {
+      _view?.onAuthError('Password must be at least 6 characters.');
       return;
     }
     if (password != confirmPassword) {
-      _view.showError('Passwords do not match.');
-      return;
-    }
-    if (trimmedPassword.length < 6) {
-      _view.showError('Password must be at least 6 characters.');
+      _view?.onAuthError('Passwords do not match.');
       return;
     }
 
-    // Email format validation
-    if (!RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(trimmedEmail)) {
-      _view.showError('Please enter a valid email address.');
-      return;
-    }
-
-    _view.showLoading();
+    _view?.showLoading();
 
     try {
-      print('🔵 STEP 1: Creating Firebase user...');
-      // 1. Create Firebase Auth user
-      UserCredential credential = await _authService.signUpWithEmailAndPassword(
-        email: trimmedEmail,
-        password: trimmedPassword,
+      print('🚀 Step 1: Creating Firebase Auth user...');
+      final credential = await _authService.signUpWithEmailAndPassword(
+        email: email,
+        password: password,
       );
 
-      User? firebaseUser = credential.user;
-      print('🔵 STEP 2: Firebase user created: ${firebaseUser?.uid}');
-
-      if (firebaseUser != null) {
-        print('🔵 STEP 3: User created successfully!');
-
-        // ⭐ CHECK: Verify user exists in Firebase Auth
-        print('🔍 Checking if user exists in Firebase Auth...');
-        checkCurrentUser(); // This will print the user details
-
-        // ⭐ SKIP FIRESTORE FOR NOW - Just create the user
-        // We'll add Firestore later
-
-        print('🔵 STEP 4: Hiding loading...');
-        _view.hideLoading();
-
-        print('🔵 STEP 5: Waiting 500ms...');
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        print('🔵 STEP 6: Calling onAuthSuccess...');
-        _view.onAuthSuccess();
-        print('✅ STEP 7: Registration complete!');
-
-        // ⭐ FINAL CHECK: Verify user still exists after navigation
-        print('🔍 Final check - current user: ${FirebaseAuth.instance.currentUser?.email}');
-      } else {
-        print('❌ ERROR: Firebase user is null!');
-        _view.hideLoading();
-        _view.showError('Failed to create user account.');
+      final firebaseUser = credential.user;
+      if (firebaseUser == null) {
+        throw Exception('User creation failed - no user returned.');
       }
-    } on FirebaseAuthException catch (e) {
-      print('❌ FIREBASE AUTH ERROR: ${e.code} - ${e.message}');
-      _view.hideLoading();
-      _view.showError(_getRegisterErrorMessage(e));
+
+      print('✅ Step 1 complete! UID: ${firebaseUser.uid}');
+
+      try {
+        await firebaseUser.updateDisplayName(displayName.trim());
+        print('✅ Updated Auth display name');
+      } catch (e) {
+        print('⚠️ Could not update Auth display name: $e');
+      }
+
+      final newUser = UserModel(
+        uid: firebaseUser.uid,
+        email: firebaseUser.email ?? email.trim(),
+        displayName: displayName.trim(),
+        role: role,
+        createdAt: DateTime.now(),
+        bookmarkedLocationIds: const [],
+      );
+
+      print('🚀 Step 2: Saving user to Firestore...');
+
+      try {
+        await _firestoreService.saveUserProfile(newUser);
+        print('✅ Step 2 complete! User saved to Firestore.');
+      } catch (firestoreError) {
+        print('❌ Firestore save failed: $firestoreError');
+
+        try {
+          await firebaseUser.delete();
+          print('🗑️ Cleaned up Firebase Auth user because Firestore save failed.');
+        } catch (deleteError) {
+          print('⚠️ Could not delete auth user: $deleteError');
+        }
+
+        throw 'Failed to create user profile: ${firestoreError.toString()}. Please check your internet connection and Firestore rules.';
+      }
+
+      _view?.hideLoading();
+      _view?.onAuthSuccess(newUser);
+
     } catch (e) {
-      print('❌ UNEXPECTED ERROR: $e');
-      _view.hideLoading();
-      _view.showError('An unexpected error occurred. Please try again.');
+      _view?.hideLoading();
+      print('❌ Registration error: $e');
+      _view?.onAuthError(e.toString());
     }
   }
 
-  // ── LOGOUT ────────────────────────────────────────────────────
-  Future<void> logout() async {
+  Future<void> signOut() async {
     try {
       await _authService.signOut();
     } catch (e) {
-      _view.showError('Error signing out: $e');
+      _view?.onAuthError(e.toString());
     }
   }
 
-  // ── ERROR MESSAGES ────────────────────────────────────────────
-  String _getLoginErrorMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'user-not-found':
-        return 'No account found with this email.';
-      case 'wrong-password':
-        return 'Incorrect password. Please try again.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'user-disabled':
-        return 'This account has been disabled.';
-      case 'too-many-requests':
-        return 'Too many failed attempts. Please try again later.';
-      case 'network-request-failed':
-        return 'Network error. Please check your internet connection.';
-      default:
-        return 'Login failed: ${e.message}';
+  String _extractNameFromEmail(String email) {
+    if (email.contains('@')) {
+      final name = email.split('@').first;
+      return name[0].toUpperCase() + name.substring(1);
     }
-  }
-
-  String _getRegisterErrorMessage(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'email-already-in-use':
-        return 'This email is already registered. Please sign in instead.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'weak-password':
-        return 'Password is too weak. Use at least 6 characters with letters and numbers.';
-      case 'operation-not-allowed':
-        return 'Email/password sign-up is not enabled. Please contact support.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please try again later.';
-      case 'network-request-failed':
-        return 'Network error. Please check your internet connection.';
-      default:
-        return 'Registration failed: ${e.message}';
-    }
+    return 'Campus User';
   }
 }

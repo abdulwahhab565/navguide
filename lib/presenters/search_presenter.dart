@@ -1,59 +1,87 @@
+import '../services/places_service.dart';
 import '../models/campus_location.dart';
-import '../config/app_config.dart';
 
 abstract class SearchViewContract {
-  void updateSuggestions(List<CampusLocation> suggestions);
-  void onLocationSelected(CampusLocation location);
+  void showLoading();
+  void hideLoading();
+  void onSearchResultsLoaded(List<CampusLocation> results);
+  void onSearchError(String message);
 }
 
 class SearchPresenter {
-  final SearchViewContract _view;
-  final List<CampusLocation> _allLocations;
-  final List<CampusLocation> _searchHistory = [];
+  final PlacesService _placesService = PlacesService();
+  SearchViewContract? _view;
 
-  SearchPresenter(this._view, {List<CampusLocation>? mockLocations})
-      : _allLocations = mockLocations ?? AppConfig.prePopulatedLocations;
+  void attachView(SearchViewContract view) {
+    _view = view;
+  }
 
-  List<CampusLocation> get searchHistory => _searchHistory;
+  void detachView() {
+    _view = null;
+  }
 
-  // Filters locations by search query (checks name, category, and description)
-  void search(String query) {
+  Future<void> searchLocations(String query) async {
     if (query.trim().isEmpty) {
-      // Show search history or default recommendations if search query is empty
-      _view.updateSuggestions(_searchHistory.isNotEmpty
-          ? _searchHistory
-          : _allLocations.take(5).toList());
+      _view?.onSearchResultsLoaded(_placesService.getAllVerifiedLocations());
       return;
     }
 
-    final String cleanQuery = query.toLowerCase().trim();
-
-    final List<CampusLocation> matches = _allLocations.where((loc) {
-      final bool matchesName = loc.name.toLowerCase().contains(cleanQuery);
-      final bool matchesCategory =
-          loc.category.toLowerCase().contains(cleanQuery);
-      final bool matchesDesc =
-          loc.description.toLowerCase().contains(cleanQuery);
-      return matchesName || matchesCategory || matchesDesc;
-    }).toList();
-
-    _view.updateSuggestions(matches);
-  }
-
-  // Handle location selection
-  void selectLocation(CampusLocation location) {
-    // Add to history if not already present
-    if (!_searchHistory.any((loc) => loc.id == location.id)) {
-      _searchHistory.insert(0, location);
-      if (_searchHistory.length > 5) {
-        _searchHistory.removeLast(); // Keep history size small
-      }
+    _view?.showLoading();
+    try {
+      final results = await _placesService.searchCampusPlaces(query);
+      _view?.hideLoading();
+      _view?.onSearchResultsLoaded(results);
+    } catch (e) {
+      _view?.hideLoading();
+      _view?.onSearchError('Search failed: ${e.toString()}');
     }
-    _view.onLocationSelected(location);
   }
 
-  void clearHistory() {
-    _searchHistory.clear();
-    search('');
+  void filterByCategory(String category) {
+    _view?.showLoading();
+    try {
+      final results = _placesService.searchByCategory(category);
+      _view?.hideLoading();
+      _view?.onSearchResultsLoaded(results);
+    } catch (e) {
+      _view?.hideLoading();
+      _view?.onSearchError('Filtering failed: ${e.toString()}');
+    }
+  }
+
+  Future<void> getLocationDetails(String placeId) async {
+    _view?.showLoading();
+    try {
+      final location = await _placesService.getPlaceDetails(placeId);
+      _view?.hideLoading();
+      if (location != null) {
+        _view?.onSearchResultsLoaded([location]);
+      } else {
+        _view?.onSearchError('Location details not found');
+      }
+    } catch (e) {
+      _view?.hideLoading();
+      _view?.onSearchError('Failed to get location details: ${e.toString()}');
+    }
+  }
+
+  List<CampusLocation> getAllVerifiedLocations() {
+    return _placesService.getAllVerifiedLocations();
+  }
+
+  Map<String, int> getCategoryCounts() {
+    return _placesService.getCategoryCounts();
+  }
+
+  List<String> getAllCategories() {
+    return _placesService.getAllCategories();
+  }
+
+  CampusLocation? getNearestLocation(double lat, double lng) {
+    return _placesService.getNearestVerifiedLocation(lat, lng);
+  }
+
+  CampusLocation? getLocationByName(String name) {
+    return _placesService.getLocationByName(name);
   }
 }

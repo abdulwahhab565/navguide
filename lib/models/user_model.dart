@@ -2,7 +2,7 @@ class UserModel {
   final String uid;
   final String email;
   final String displayName;
-  final String role; // Student, Visitor, Staff
+  final String role;
   final DateTime createdAt;
   final List<String> bookmarkedLocationIds;
 
@@ -10,7 +10,7 @@ class UserModel {
     required this.uid,
     required this.email,
     required this.displayName,
-    required this.role,
+    this.role = 'Student',
     required this.createdAt,
     this.bookmarkedLocationIds = const [],
   });
@@ -30,10 +30,10 @@ class UserModel {
     return UserModel(
       uid: map['uid'] ?? '',
       email: map['email'] ?? '',
-      displayName: map['displayName'] ?? '',
-      role: map['role'] ?? 'Visitor',
-      createdAt: map['createdAt'] != null 
-          ? DateTime.parse(map['createdAt']) 
+      displayName: map['displayName'] ?? 'Campus User',
+      role: map['role'] ?? 'Student',
+      createdAt: map['createdAt'] != null
+          ? DateTime.tryParse(map['createdAt']) ?? DateTime.now()
           : DateTime.now(),
       bookmarkedLocationIds: List<String>.from(map['bookmarkedLocationIds'] ?? []),
     );
@@ -55,5 +55,19 @@ class UserModel {
       createdAt: createdAt ?? this.createdAt,
       bookmarkedLocationIds: bookmarkedLocationIds ?? this.bookmarkedLocationIds,
     );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is UserModel && other.uid == uid;
+  }
+
+  @override
+  int get hashCode => uid.hashCode;
+
+  @override
+  String toString() {
+    return 'UserModel(uid: $uid, email: $email, role: $role)';
   }
 }

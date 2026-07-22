@@ -97,7 +97,7 @@ flutter pub get
 ```dart
 // lib/config/firebase_options.dart
 static const FirebaseOptions android = FirebaseOptions(
-  apiKey: 'YOUR_FIREBASE_ANDROID_API_KEY',
+  apiKey: 'IzaSyC_eb7-bYyxd6BIW5rkwAUrHTPb_mbuTUc',
   appId: 'YOUR_ANDROID_APP_ID',
   messagingSenderId: 'YOUR_SENDER_ID',
   projectId: 'navguide-uenr',
@@ -128,7 +128,7 @@ firebase deploy --only firestore:rules
 #### b) Set the key — Android
 In `android/app/src/main/AndroidManifest.xml`, replace:
 ```xml
-android:value="YOUR_GOOGLE_MAPS_API_KEY"
+android:value="YAIzaSyCpMjOU83HIUWrZVG46mDf4p7I3Z4nxXrE"
 ```
 with your actual key.
 

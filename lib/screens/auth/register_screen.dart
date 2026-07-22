@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../main.dart' show AppTheme;
 import '../../presenters/auth_presenter.dart';
+import '../../models/user_model.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -9,36 +10,35 @@ class RegisterScreen extends StatefulWidget {
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen>
-    implements AuthViewContract {
+class _RegisterScreenState extends State<RegisterScreen> implements AuthViewContract {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
-  final _confirmPassCtrl = TextEditingController();
-  late final AuthPresenter _presenter;
+  final _passwordCtrl = TextEditingController();
+  final _confirmPasswordCtrl = TextEditingController();
+  final _presenter = AuthPresenter();
+
+  String _selectedRole = 'Student';
+  final List<String> _roles = ['Student', 'Staff', 'Visitor'];
 
   bool _isLoading = false;
-  bool _isSuccess = false;
-  bool _obscurePass = true;
-  bool _obscureConfirm = true;
-  String _selectedRole = 'Student';
-  bool _isNavigating = false;
-
-  static const List<String> _roles = ['Student', 'Staff', 'Visitor'];
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _presenter = AuthPresenter(this);
+    _presenter.attachView(this);
   }
 
   @override
   void dispose() {
+    _presenter.detachView();
     _nameCtrl.dispose();
     _emailCtrl.dispose();
-    _passCtrl.dispose();
-    _confirmPassCtrl.dispose();
+    _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
     super.dispose();
   }
 
@@ -46,435 +46,214 @@ class _RegisterScreenState extends State<RegisterScreen>
   void showLoading() {
     setState(() {
       _isLoading = true;
-      _isSuccess = false;
+      _errorMessage = null;
     });
   }
 
   @override
   void hideLoading() {
-    setState(() {
-      _isLoading = false;
-    });
+    setState(() => _isLoading = false);
   }
 
   @override
-  void showError(String message) {
+  void onAuthSuccess(UserModel user) {
     if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-      _isSuccess = false;
-      _isNavigating = false;
-    });
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white, size: 18),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    Navigator.of(context).pushReplacementNamed('/map');
   }
 
   @override
-  void onAuthSuccess() {
-    if (!mounted) return;
-
-    setState(() {
-      _isLoading = false;
-      _isSuccess = true;
-      _isNavigating = false;
-    });
-
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted || _isNavigating) return;
-      _goToLoginScreen();
-    });
-  }
-
-  void _goToLoginScreen() {
-    if (!mounted || _isNavigating) return;
-
-    setState(() {
-      _isNavigating = true;
-    });
-
-    Navigator.of(context).pop();
+  void onAuthError(String message) {
+    setState(() => _errorMessage = message);
   }
 
   void _submit() {
-    if (_isLoading || _isSuccess) return;
-
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isSuccess = false;
-        _isNavigating = false;
-      });
-
-      try {
-        _presenter.register(
-          email: _emailCtrl.text.trim(),
-          password: _passCtrl.text,
-          confirmPassword: _confirmPassCtrl.text,
-          displayName: _nameCtrl.text.trim(),
-          role: _selectedRole,
-        );
-      } catch (e) {
-        setState(() {
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+    if (_formKey.currentState?.validate() ?? false) {
+      _presenter.register(
+        email: _emailCtrl.text,
+        password: _passwordCtrl.text,
+        confirmPassword: _confirmPasswordCtrl.text,
+        displayName: _nameCtrl.text,
+        role: _selectedRole,
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.surface,
       appBar: AppBar(
-        title: const Text('Create Account'),
+        backgroundColor: AppTheme.surface,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.onSurface),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        elevation: 0,
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Join NavGuide',
-                  style: TextStyle(
-                    color: AppTheme.onSurface,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Create Account',
+                    style: TextStyle(
+                      color: AppTheme.onSurface,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Navigate UENR campus with ease.',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
-                    fontSize: 14,
+                  const SizedBox(height: 6),
+                  Text(
+                    'Join NavGuide to explore UENR campus',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 14,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 32),
+                  const SizedBox(height: 28),
 
-                // ── SUCCESS CARD ──
-                if (_isSuccess)
-                  Container(
-                    padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          AppTheme.primary.withOpacity(0.12),
-                          AppTheme.primaryLight.withOpacity(0.06),
+                  if (_errorMessage != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.4)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                            ),
+                          ),
                         ],
                       ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: AppTheme.primaryLight.withOpacity(0.3),
-                        width: 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primary.withOpacity(0.1),
-                          blurRadius: 20,
-                          spreadRadius: 2,
-                        ),
-                      ],
                     ),
-                    child: Column(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                AppTheme.primary,
-                                AppTheme.primaryLight,
-                              ],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.primary.withOpacity(0.3),
-                                blurRadius: 20,
-                                spreadRadius: 4,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.check_rounded,
-                            color: Colors.white,
-                            size: 40,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Account Created Successfully',
-                          style: TextStyle(
-                            color: AppTheme.primaryLight,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.3,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: 40,
-                          height: 40,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              AppTheme.primaryLight,
-                            ),
-                            backgroundColor: Colors.white.withOpacity(0.1),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Redirecting...',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.4),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                    const SizedBox(height: 20),
+                  ],
 
-                // ── FORM FIELDS ──
-                if (!_isSuccess) ...[
                   TextFormField(
                     controller: _nameCtrl,
-                    textInputAction: TextInputAction.next,
-                    textCapitalization: TextCapitalization.words,
                     style: const TextStyle(color: AppTheme.onSurface),
                     decoration: const InputDecoration(
                       labelText: 'Full Name',
-                      hintText: 'e.g. Kwame Mensah',
                       prefixIcon: Icon(Icons.person_outline_rounded),
                     ),
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Name is required'
-                        : null,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Full name is required';
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 16),
 
                   TextFormField(
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    autocorrect: false,
                     style: const TextStyle(color: AppTheme.onSurface),
                     decoration: const InputDecoration(
                       labelText: 'Email Address',
-                      hintText: 'student@uenr.edu.gh',
                       prefixIcon: Icon(Icons.email_outlined),
                     ),
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Email is required';
-                      if (!RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$')
-                          .hasMatch(v.trim())) {
-                        return 'Enter a valid email';
-                      }
+                      if (v == null || v.trim().isEmpty) return 'Email is required';
+                      if (!v.contains('@')) return 'Enter a valid email address';
                       return null;
                     },
                   ),
                   const SizedBox(height: 16),
 
-                  Container(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E2235),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFF2A2D3E)),
+                  DropdownButtonFormField<String>(
+                    value: _selectedRole,
+                    dropdownColor: const Color(0xFF1E2030),
+                    style: const TextStyle(color: AppTheme.onSurface),
+                    decoration: const InputDecoration(
+                      labelText: 'Role',
+                      prefixIcon: Icon(Icons.badge_outlined),
                     ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedRole,
-                        isExpanded: true,
-                        dropdownColor: const Color(0xFF1E2235),
-                        icon: const Icon(
-                          Icons.expand_more_rounded,
-                          color: AppTheme.primaryLight,
-                        ),
-                        style: const TextStyle(
-                          color: AppTheme.onSurface,
-                          fontSize: 15,
-                        ),
-                        hint: const Text('Select Role'),
-                        items: _roles.map((r) {
-                          return DropdownMenuItem<String>(
-                            value: r,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  r == 'Student'
-                                      ? Icons.school_outlined
-                                      : r == 'Staff'
-                                      ? Icons.work_outline_rounded
-                                      : Icons.person_pin_circle_outlined,
-                                  size: 18,
-                                  color: AppTheme.primaryLight,
-                                ),
-                                const SizedBox(width: 10),
-                                Text(r),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (v) =>
-                            setState(() => _selectedRole = v ?? 'Student'),
-                      ),
-                    ),
+                    items: _roles
+                        .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) setState(() => _selectedRole = val);
+                    },
                   ),
                   const SizedBox(height: 16),
 
                   TextFormField(
-                    controller: _passCtrl,
-                    obscureText: _obscurePass,
-                    textInputAction: TextInputAction.next,
+                    controller: _passwordCtrl,
+                    obscureText: _obscurePassword,
                     style: const TextStyle(color: AppTheme.onSurface),
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      hintText: 'Min. 6 characters',
-                      prefixIcon: const Icon(Icons.lock_outline),
+                      prefixIcon: const Icon(Icons.lock_outline_rounded),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePass
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
                         ),
                         onPressed: () =>
-                            setState(() => _obscurePass = !_obscurePass),
+                            setState(() => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Password is required';
-                      if (v.length < 6) return 'At least 6 characters';
+                      if (v.length < 6) return 'Must be at least 6 characters';
                       return null;
                     },
                   ),
                   const SizedBox(height: 16),
 
                   TextFormField(
-                    controller: _confirmPassCtrl,
-                    obscureText: _obscureConfirm,
-                    textInputAction: TextInputAction.done,
-                    onFieldSubmitted: (_) => _submit(),
+                    controller: _confirmPasswordCtrl,
+                    obscureText: _obscureConfirmPassword,
                     style: const TextStyle(color: AppTheme.onSurface),
                     decoration: InputDecoration(
                       labelText: 'Confirm Password',
-                      hintText: 'Re-enter password',
-                      prefixIcon: const Icon(Icons.lock_reset_outlined),
+                      prefixIcon: const Icon(Icons.lock_clock_outlined),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscureConfirm
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
+                          _obscureConfirmPassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
                         ),
-                        onPressed: () => setState(
-                              () => _obscureConfirm = !_obscureConfirm,
-                        ),
+                        onPressed: () => setState(() =>
+                        _obscureConfirmPassword = !_obscureConfirmPassword),
                       ),
                     ),
                     validator: (v) {
-                      if (v == null || v.isEmpty) {
-                        return 'Confirm your password';
-                      }
-                      if (v != _passCtrl.text) return 'Passwords do not match';
+                      if (v == null || v.isEmpty) return 'Please confirm your password';
+                      if (v != _passwordCtrl.text) return 'Passwords do not match';
                       return null;
                     },
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 28),
 
-                  _isLoading
-                      ? Center(
-                    child: Column(
-                      children: [
-                        const CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            AppTheme.primaryLight,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Creating your account...',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                      : ElevatedButton.icon(
-                    onPressed: _submit,
-                    icon: const Icon(Icons.check_circle_outline_rounded),
-                    label: const Text('Create Account'),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  Center(
-                    child: TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: RichText(
-                        text: TextSpan(
-                          text: 'Already have an account? ',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.45),
-                            fontSize: 13,
-                          ),
-                          children: const [
-                            TextSpan(
-                              text: 'Sign In',
-                              style: TextStyle(
-                                color: AppTheme.primaryLight,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _submit,
+                    child: _isLoading
+                        ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
-                    ),
+                    )
+                        : const Text('Create Account'),
                   ),
+                  const SizedBox(height: 20),
                 ],
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
         ),

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../main.dart' show AppTheme;
 import '../../presenters/auth_presenter.dart';
-import '../map/map_screen.dart';
-import 'register_screen.dart';
+import '../../models/user_model.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,268 +11,230 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> implements AuthViewContract {
-  // ── Controllers ──────────────────────────────────────────────
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
-  final _passCtrl = TextEditingController();
-  late final AuthPresenter _presenter;
+  final _passwordCtrl = TextEditingController();
+  final _presenter = AuthPresenter();
 
   bool _isLoading = false;
-  bool _obscurePass = true;
+  bool _obscurePassword = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _presenter = AuthPresenter(this);
+    _presenter.attachView(this);
   }
 
   @override
   void dispose() {
+    _presenter.detachView();
     _emailCtrl.dispose();
-    _passCtrl.dispose();
+    _passwordCtrl.dispose();
     super.dispose();
   }
 
-  // ── AuthViewContract ─────────────────────────────────────────
   @override
-  void showLoading() => setState(() => _isLoading = true);
-
-  @override
-  void hideLoading() => setState(() => _isLoading = false);
-
-  @override
-  void showError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).clearSnackBars();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.error_outline, color: Colors.white, size: 18),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                message,
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.red.shade700,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
-
-  @override
-  void onAuthSuccess() {
-    if (!mounted) return;
-
-    // Show a brief loading state before starting transition
+  void showLoading() {
     setState(() {
       _isLoading = true;
-    });
-
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => const MapScreen(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return FadeTransition(
-              opacity: animation,
-              child: child,
-            );
-          },
-          transitionDuration: const Duration(milliseconds: 650),
-        ),
-      );
+      _errorMessage = null;
     });
   }
 
-  // ── Actions ───────────────────────────────────────────────────
+  @override
+  void hideLoading() {
+    setState(() => _isLoading = false);
+  }
+
+  @override
+  void onAuthSuccess(UserModel user) {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed('/map');
+  }
+
+  @override
+  void onAuthError(String message) {
+    setState(() => _errorMessage = message);
+  }
+
   void _submit() {
-    if (_formKey.currentState!.validate()) {
-      _presenter.login(_emailCtrl.text, _passCtrl.text);
+    if (_formKey.currentState?.validate() ?? false) {
+      _presenter.login(_emailCtrl.text, _passwordCtrl.text);
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
     return Scaffold(
+      backgroundColor: AppTheme.surface,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(height: size.height * 0.08),
-
-              // ── Hero section ──────────────────────────────────
-              _buildHero(),
-
-              SizedBox(height: size.height * 0.05),
-
-              // ── Form ──────────────────────────────────────────
-              Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    // Email field
-                    TextFormField(
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      autocorrect: false,
-                      style: const TextStyle(color: AppTheme.onSurface),
-                      decoration: const InputDecoration(
-                        labelText: 'Email Address',
-                        hintText: 'student@uenr.edu.gh',
-                        prefixIcon: Icon(Icons.email_outlined),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Email is required';
-                        if (!RegExp(r'^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$')
-                            .hasMatch(v)) {
-                          return 'Enter a valid email address';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Password field
-                    TextFormField(
-                      controller: _passCtrl,
-                      obscureText: _obscurePass,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submit(),
-                      style: const TextStyle(color: AppTheme.onSurface),
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        hintText: '••••••••',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePass
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [AppTheme.primary, AppTheme.primaryLight],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(22),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primary.withValues(alpha: 0.4),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
                           ),
-                          onPressed: () =>
-                              setState(() => _obscurePass = !_obscurePass),
-                        ),
+                        ],
                       ),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) {
-                          return 'Password is required';
-                        }
-                        if (v.length < 6) {
-                          return 'Password must be at least 6 characters';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 28),
-
-                    // Login button
-                    _isLoading
-                        ? const CircularProgressIndicator()
-                        : ElevatedButton.icon(
-                      onPressed: _submit,
-                      icon: const Icon(Icons.login_rounded),
-                      label: const Text('Sign In'),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Register link
-                    OutlinedButton.icon(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const RegisterScreen(),
-                        ),
+                      child: const Icon(
+                        Icons.navigation_rounded,
+                        size: 42,
+                        color: Colors.white,
                       ),
-                      icon: const Icon(Icons.person_add_outlined),
-                      label: const Text('Create Account'),
                     ),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Welcome Back',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppTheme.onSurface,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Sign in to navigate UENR campus',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 36),
+
+                  if (_errorMessage != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: Colors.redAccent.withValues(alpha: 0.4)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline_rounded,
+                              color: Colors.redAccent, size: 20),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                  color: Colors.redAccent, fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                   ],
-                ),
-              ),
 
-              const SizedBox(height: 32),
+                  TextFormField(
+                    controller: _emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    style: const TextStyle(color: AppTheme.onSurface),
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return 'Email is required';
+                      if (!v.contains('@')) return 'Enter a valid email address';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
 
-              // ── Guest hint ────────────────────────────────────
-              Text(
-                'Sign in to save your favourite locations\nand access campus navigation.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.35),
-                  fontSize: 12,
-                  height: 1.6,
-                ),
+                  TextFormField(
+                    controller: _passwordCtrl,
+                    obscureText: _obscurePassword,
+                    style: const TextStyle(color: AppTheme.onSurface),
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: const Icon(Icons.lock_outline_rounded),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        onPressed: () =>
+                            setState(() => _obscurePassword = !_obscurePassword),
+                      ),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Password is required';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 28),
+
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _submit,
+                    child: _isLoading
+                        ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor:
+                        AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                        : const Text('Sign In'),
+                  ),
+                  const SizedBox(height: 24),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Don\'t have an account? ',
+                        style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5)),
+                      ),
+                      GestureDetector(
+                        onTap: () =>
+                            Navigator.of(context).pushNamed('/register'),
+                        child: const Text(
+                          'Register',
+                          style: TextStyle(
+                            color: AppTheme.primaryLight,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
-            ],
+            ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildHero() {
-    return Column(
-      children: [
-        // Gradient icon badge - Purple to Neon Cyan
-        Container(
-          width: 88,
-          height: 88,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppTheme.primary, AppTheme.primaryLight],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.primary.withValues(alpha: 0.45),
-                blurRadius: 24,
-                spreadRadius: 2,
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.navigation_rounded,
-            color: Colors.white,
-            size: 44,
-          ),
-        ),
-        const SizedBox(height: 20),
-        const Text(
-          'Welcome Back',
-          style: TextStyle(
-            color: AppTheme.onSurface,
-            fontSize: 28,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.3,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Sign in to NavGuide – UENR Campus',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
-            fontSize: 13,
-            letterSpacing: 0.3,
-          ),
-        ),
-      ],
     );
   }
 }

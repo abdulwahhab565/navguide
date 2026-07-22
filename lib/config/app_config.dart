@@ -1,254 +1,340 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/campus_location.dart';
 
 class AppConfig {
-  // Google Maps API Key - loaded from environmental variables or system config.
-  // In a production app, use --dart-define=MAPS_API_KEY=your_key or load dynamically.
-  static const String googleMapsApiKey = String.fromEnvironment(
-    'MAPS_API_KEY',
-    defaultValue: 'YOUR_GOOGLE_MAPS_API_KEY_HERE',
-  );
+  static const String googleMapsApiKey = 'AIzaSyCpMjOU83HIUWrZVG46mDf4p7I3Z4nxXrE';
 
-  // Systematic offsets to correct the coordinate grid to real-world Google Maps coordinates.
-  // Default values derived from actual campus center coordinates (approx 110m Lat, 200m Lng shift).
-  static double latitudeOffset = -0.00098;
-  static double longitudeOffset = 0.00184;
+  static const LatLng campusCenter = LatLng(7.3495, -2.3435);
 
-  // UENR Main Campus Center (raw coordinates)
-  static const LatLng rawCampusCenter = LatLng(7.3495, -2.3435);
-
-  // Corrected campus center
-  static LatLng get campusCenter => correctCoordinate(rawCampusCenter);
-
-  // Bounding box for UENR Main Campus, Sunyani (raw coordinates)
   static const double northBound = 7.3550;
   static const double southBound = 7.3440;
   static const double westBound = -2.3480;
   static const double eastBound = -2.3380;
 
-  // Corrects a raw coordinate (dynamic offset mapping)
-  static LatLng correctCoordinate(LatLng position) {
-    return LatLng(position.latitude + latitudeOffset,
-        position.longitude + longitudeOffset);
-  }
-
-  // Load offsets from SharedPreferences
-  static Future<void> loadCalibratedOffsets() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      latitudeOffset = prefs.getDouble('lat_offset') ?? -0.00098;
-      longitudeOffset = prefs.getDouble('lng_offset') ?? 0.00184;
-    } catch (e) {
-      print('Error loading calibrated offsets: $e');
-    }
-  }
-
-  // Save offsets to SharedPreferences
-  static Future<void> saveCalibratedOffsets(double lat, double lng) async {
-    latitudeOffset = lat;
-    longitudeOffset = lng;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble('lat_offset', lat);
-      await prefs.setDouble('lng_offset', lng);
-    } catch (e) {
-      print('Error saving calibrated offsets: $e');
-    }
-  }
-
-  // Boundary check helper
   static bool isWithinCampus(LatLng position) {
-    final correctedNorth = northBound + latitudeOffset;
-    final correctedSouth = southBound + latitudeOffset;
-    final correctedWest = westBound + longitudeOffset;
-    final correctedEast = eastBound + longitudeOffset;
-
-    return position.latitude >= correctedSouth &&
-        position.latitude <= correctedNorth &&
-        position.longitude >= correctedWest &&
-        position.longitude <= correctedEast;
+    return position.latitude >= southBound &&
+        position.latitude <= northBound &&
+        position.longitude >= westBound &&
+        position.longitude <= eastBound;
   }
 
-  // Pre-populated campus facilities
-  static final List<CampusLocation> prePopulatedLocations = [
-    CampusLocation(
-      id: 'main_gate',
-      name: 'Main Gate',
-      category: 'Administration',
-      latitude: 7.3462,
-      longitude: -2.3415,
-      description: 'The main entrance and security post to the UENR campus.',
-    ),
-    CampusLocation(
-      id: 'admin_block',
-      name: 'Administration Block',
-      category: 'Administration',
-      latitude: 7.3495,
-      longitude: -2.3435,
-      description:
-          'The main administration block housing the Vice Chancellor\'s office, Registry, and Finance Directorate.',
-    ),
-    CampusLocation(
-      id: 'vc_office',
-      name: 'Vice Chancellor\'s Office',
-      category: 'Administration',
-      latitude: 7.3496,
-      longitude: -2.3436,
-      description: 'Office of the Vice Chancellor, located in the Administration Block.',
-    ),
-    CampusLocation(
-      id: 'registrar_office',
-      name: 'Registrar\'s Office',
-      category: 'Administration',
-      latitude: 7.3494,
-      longitude: -2.3434,
-      description: 'The Registrar\'s office and administrative services.',
-    ),
-    CampusLocation(
-      id: 'library',
-      name: 'University Library',
+  static final List<CampusLocation> verifiedLocations = [
+    const CampusLocation(
+      id: 'sh',
+      name: 'SH',
       category: 'Academic',
-      latitude: 7.3491,
-      longitude: -2.3431,
-      description:
-          'The main university library containing physical textbooks, digital resource access, and study spaces.',
+      latitude: 7.35016,
+      longitude: -2.33994,
+      description: 'School of Humanities',
     ),
-    CampusLocation(
-      id: 'engineering_block',
-      name: 'Engineering Block',
-      category: 'Academic',
-      latitude: 7.3502,
-      longitude: -2.3442,
-      description:
-          'Lecture rooms and laboratories for the School of Engineering.',
-    ),
-    CampusLocation(
-      id: 'lecture_hall_a',
-      name: 'Lecture Hall Block A',
-      category: 'Academic',
-      latitude: 7.3498,
-      longitude: -2.3415,
-      description:
-          'Multi-purpose lecture rooms for undergraduate lectures and examinations.',
-    ),
-    CampusLocation(
-      id: 'lecture_hall_b',
-      name: 'Lecture Hall Block B',
-      category: 'Academic',
-      latitude: 7.3505,
-      longitude: -2.3430,
-      description:
-          'Academic block containing medium-sized classrooms and faculty offices.',
-    ),
-    CampusLocation(
-      id: 'science_lecture_hall',
-      name: 'Science Lecture Hall',
-      category: 'Academic',
-      latitude: 7.3482,
-      longitude: -2.3445,
-      description:
-          'Auditorium dedicated to sciences lectures, presentations, and events.',
-    ),
-    CampusLocation(
-      id: 'comp_science',
-      name: 'Department of Computer Science',
-      category: 'Academic',
-      latitude: 7.3508,
-      longitude: -2.3446,
-      description: 'Offices and computer laboratories for Computer Science department.',
-    ),
-    CampusLocation(
-      id: 'natural_resources',
-      name: 'Faculty of Natural Resources',
-      category: 'Academic',
-      latitude: 7.3485,
-      longitude: -2.3450,
-      description: 'Offices and laboratories for the Faculty of Natural Resources.',
-    ),
-    CampusLocation(
-      id: 'it_directorate',
-      name: 'IT Directorate',
+    const CampusLocation(
+      id: 'saw_mill',
+      name: 'Saw Mill',
       category: 'Services',
-      latitude: 7.3488,
-      longitude: -2.3425,
-      description:
-          'The central hub for all campus network services, software development, and IT support.',
+      latitude: 7.35081,
+      longitude: -2.34048,
+      description: 'Campus Saw Mill',
     ),
-    CampusLocation(
-      id: 'clinic',
-      name: 'Campus Clinic',
+    const CampusLocation(
+      id: 'lt',
+      name: 'LT',
+      category: 'Academic',
+      latitude: 7.35121,
+      longitude: -2.34168,
+      description: 'Lecture Theatre',
+    ),
+    const CampusLocation(
+      id: 'app_lab_1',
+      name: 'App Lab 1',
+      category: 'Academic',
+      latitude: 7.35112,
+      longitude: -2.34210,
+      description: 'Application Laboratory 1',
+    ),
+    const CampusLocation(
+      id: 'uenr_school_field',
+      name: 'UENR School Field',
+      category: 'Amenities',
+      latitude: 7.35102,
+      longitude: -2.34264,
+      description: 'Main School Field',
+    ),
+    const CampusLocation(
+      id: 'basketball_court',
+      name: 'Basketball Court',
+      category: 'Amenities',
+      latitude: 7.35072,
+      longitude: -2.34357,
+      description: 'Outdoor Basketball Court',
+    ),
+    const CampusLocation(
+      id: 'hostel_campus_road',
+      name: 'Hostel Campus Road',
       category: 'Services',
-      latitude: 7.3510,
-      longitude: -2.3420,
-      description:
-          'Provides primary healthcare and emergency medical services to the university community.',
+      latitude: 7.35072,
+      longitude: -2.34357,
+      description: 'Road to Hostels',
     ),
-    CampusLocation(
-      id: 'cafeteria',
-      name: 'Campus Cafeteria',
+    const CampusLocation(
+      id: 'odum_block',
+      name: 'Odum Block',
+      category: 'Academic',
+      latitude: 7.34994,
+      longitude: -2.34283,
+      description: 'Odum Academic Block',
+    ),
+    const CampusLocation(
+      id: 'school_of_graduate_studies',
+      name: 'School of Graduate Studies',
+      category: 'Academic',
+      latitude: 7.34975,
+      longitude: -2.34273,
+      description: 'Graduate Studies Building',
+    ),
+    const CampusLocation(
+      id: 'university_cafeteria',
+      name: 'University Cafeteria',
       category: 'Amenities',
-      latitude: 7.3475,
-      longitude: -2.3432,
-      description:
-          'The central food court offering local and continental meals for students and staff.',
+      latitude: 7.34971,
+      longitude: -2.34238,
+      description: 'Main Campus Cafeteria',
     ),
-    CampusLocation(
-      id: 'hostel_men',
-      name: 'Student Hostel (Men)',
-      category: 'Amenities',
-      latitude: 7.3525,
-      longitude: -2.3455,
-      description: 'On-campus residential facility for male students.',
+    const CampusLocation(
+      id: 'french_lab',
+      name: 'French Lab',
+      category: 'Academic',
+      latitude: 7.34962,
+      longitude: -2.34286,
+      description: 'French Language Laboratory',
     ),
-    CampusLocation(
-      id: 'hostel_women',
-      name: 'Student Hostel (Women)',
-      category: 'Amenities',
-      latitude: 7.3530,
-      longitude: -2.3450,
-      description: 'On-campus residential facility for female students.',
+    const CampusLocation(
+      id: 'old_auditorium',
+      name: 'Old Auditorium',
+      category: 'Academic',
+      latitude: 7.34944,
+      longitude: -2.34278,
+      description: 'Old Auditorium Building',
     ),
-    CampusLocation(
-      id: 'sports_complex',
-      name: 'Sports Complex',
-      category: 'Amenities',
-      latitude: 7.3520,
-      longitude: -2.3410,
-      description: 'Outdoor fields, basketball courts, and sports facilities.',
+    const CampusLocation(
+      id: 'academic_student_affairs',
+      name: 'Academic & Student Affairs Division',
+      category: 'Administration',
+      latitude: 7.34939,
+      longitude: -2.34298,
+      description: 'Academic and Student Affairs',
     ),
-    CampusLocation(
-      id: 'washrooms_library',
-      name: 'Washroom (Near Library)',
-      category: 'Restrooms',
-      latitude: 7.3490,
-      longitude: -2.3429,
-      description: 'Public restrooms located adjacent to the Main Library.',
+    const CampusLocation(
+      id: 'internal_audit',
+      name: 'Internal Audit',
+      category: 'Administration',
+      latitude: 7.34951,
+      longitude: -2.34330,
+      description: 'Internal Audit Office',
     ),
-    CampusLocation(
-      id: 'washrooms_engineering',
-      name: 'Washroom (Engineering)',
-      category: 'Restrooms',
-      latitude: 7.3500,
-      longitude: -2.3440,
-      description:
-          'Restrooms located within the ground floor of the Engineering Block.',
+    const CampusLocation(
+      id: 'director_of_finance',
+      name: 'Director of Finance',
+      category: 'Administration',
+      latitude: 7.34950,
+      longitude: -2.34332,
+      description: 'Finance Directorate',
     ),
-    CampusLocation(
-      id: 'atm',
-      name: 'Bank/ATM',
+    const CampusLocation(
+      id: 'biochemistry_lab',
+      name: 'Biochemistry Lab',
+      category: 'Academic',
+      latitude: 7.34950,
+      longitude: -2.34332,
+      description: 'Biochemistry Laboratory',
+    ),
+    const CampusLocation(
+      id: 'school_clinic',
+      name: 'School Clinic',
       category: 'Services',
-      latitude: 7.3480,
-      longitude: -2.3430,
-      description: '24/7 banking and ATM service machines.',
-    ),
-    CampusLocation(
-      id: 'chapel',
-      name: 'Small Chapel',
-      category: 'Amenities',
-      latitude: 7.3470,
-      longitude: -2.3440,
-      description: 'A quiet interdenominational chapel for prayers and fellowship.',
+      latitude: 7.34921,
+      longitude: -2.34315,
+      description: 'Campus Health Clinic',
     ),
   ];
+
+  static final List<GraphNode> roadNodes = [
+    const GraphNode(id: 'n1', lat: 7.34930, lng: -2.33980, label: 'Main Entrance'),
+    const GraphNode(id: 'n2', lat: 7.34970, lng: -2.34030, label: 'Junction A'),
+    const GraphNode(id: 'n3', lat: 7.35020, lng: -2.34060, label: 'Junction B'),
+    const GraphNode(id: 'n4', lat: 7.35060, lng: -2.34100, label: 'Junction C'),
+    const GraphNode(id: 'n5', lat: 7.35100, lng: -2.34140, label: 'Junction D'),
+    const GraphNode(id: 'n6', lat: 7.34970, lng: -2.34150, label: 'Junction E'),
+    const GraphNode(id: 'n7', lat: 7.34960, lng: -2.34200, label: 'Junction F'),
+    const GraphNode(id: 'n8', lat: 7.34990, lng: -2.34250, label: 'Junction G'),
+    const GraphNode(id: 'n9', lat: 7.35030, lng: -2.34280, label: 'Junction H'),
+    const GraphNode(id: 'n10', lat: 7.35070, lng: -2.34310, label: 'Junction I'),
+    const GraphNode(id: 'n11', lat: 7.34900, lng: -2.34250, label: 'Junction J'),
+    const GraphNode(id: 'n12', lat: 7.34920, lng: -2.34300, label: 'Junction K'),
+    const GraphNode(id: 'n13', lat: 7.34940, lng: -2.34340, label: 'Junction L'),
+    const GraphNode(id: 'n14', lat: 7.34960, lng: -2.34360, label: 'Junction M'),
+    const GraphNode(id: 'n15', lat: 7.35000, lng: -2.34380, label: 'Junction N'),
+    const GraphNode(id: 'n16', lat: 7.35050, lng: -2.34250, label: 'Junction O'),
+    const GraphNode(id: 'n17', lat: 7.35100, lng: -2.34290, label: 'Junction P'),
+    const GraphNode(id: 'n18', lat: 7.35120, lng: -2.34330, label: 'Junction Q'),
+    const GraphNode(id: 'n19', lat: 7.35110, lng: -2.34370, label: 'Junction R'),
+    const GraphNode(id: 'n20', lat: 7.34980, lng: -2.34180, label: 'Walkway A'),
+    const GraphNode(id: 'n21', lat: 7.35010, lng: -2.34220, label: 'Walkway B'),
+    const GraphNode(id: 'n22', lat: 7.35040, lng: -2.34230, label: 'Walkway C'),
+    const GraphNode(id: 'n23', lat: 7.34950, lng: -2.34260, label: 'Walkway D'),
+  ];
+
+  static final List<GraphEdge> roadEdges = [
+    const GraphEdge(sourceId: 'n1', targetId: 'n2', distance: 65.0),
+    const GraphEdge(sourceId: 'n2', targetId: 'n3', distance: 70.0),
+    const GraphEdge(sourceId: 'n3', targetId: 'n4', distance: 55.0),
+    const GraphEdge(sourceId: 'n4', targetId: 'n5', distance: 60.0),
+    const GraphEdge(sourceId: 'n2', targetId: 'n6', distance: 80.0),
+    const GraphEdge(sourceId: 'n6', targetId: 'n7', distance: 55.0),
+    const GraphEdge(sourceId: 'n7', targetId: 'n8', distance: 60.0),
+    const GraphEdge(sourceId: 'n8', targetId: 'n9', distance: 50.0),
+    const GraphEdge(sourceId: 'n9', targetId: 'n10', distance: 55.0),
+    const GraphEdge(sourceId: 'n7', targetId: 'n11', distance: 45.0),
+    const GraphEdge(sourceId: 'n11', targetId: 'n12', distance: 55.0),
+    const GraphEdge(sourceId: 'n12', targetId: 'n13', distance: 50.0),
+    const GraphEdge(sourceId: 'n13', targetId: 'n14', distance: 40.0),
+    const GraphEdge(sourceId: 'n14', targetId: 'n15', distance: 50.0),
+    const GraphEdge(sourceId: 'n8', targetId: 'n16', distance: 60.0),
+    const GraphEdge(sourceId: 'n16', targetId: 'n17', distance: 65.0),
+    const GraphEdge(sourceId: 'n17', targetId: 'n18', distance: 55.0),
+    const GraphEdge(sourceId: 'n18', targetId: 'n19', distance: 50.0),
+    const GraphEdge(sourceId: 'n6', targetId: 'n20', distance: 35.0),
+    const GraphEdge(sourceId: 'n20', targetId: 'n21', distance: 40.0),
+    const GraphEdge(sourceId: 'n21', targetId: 'n22', distance: 35.0),
+    const GraphEdge(sourceId: 'n22', targetId: 'n9', distance: 30.0),
+    const GraphEdge(sourceId: 'n7', targetId: 'n23', distance: 30.0),
+    const GraphEdge(sourceId: 'n23', targetId: 'n12', distance: 35.0),
+    const GraphEdge(sourceId: 'n3', targetId: 'n20', distance: 50.0),
+    const GraphEdge(sourceId: 'n5', targetId: 'n22', distance: 45.0),
+    const GraphEdge(sourceId: 'n10', targetId: 'n15', distance: 40.0),
+    const GraphEdge(sourceId: 'n10', targetId: 'n17', distance: 45.0),
+    const GraphEdge(sourceId: 'n13', targetId: 'n23', distance: 40.0),
+    const GraphEdge(sourceId: 'n14', targetId: 'n19', distance: 55.0),
+    const GraphEdge(sourceId: 'n4', targetId: 'n21', distance: 40.0),
+    const GraphEdge(sourceId: 'n15', targetId: 'n18', distance: 50.0),
+    const GraphEdge(sourceId: 'n11', targetId: 'n16', distance: 60.0),
+  ];
+
+  static const Map<String, String> locationToNearestNode = {
+    'sh': 'n1',
+    'saw_mill': 'n3',
+    'lt': 'n5',
+    'app_lab_1': 'n9',
+    'uenr_school_field': 'n10',
+    'basketball_court': 'n15',
+    'hostel_campus_road': 'n15',
+    'odum_block': 'n8',
+    'school_of_graduate_studies': 'n8',
+    'university_cafeteria': 'n7',
+    'french_lab': 'n12',
+    'old_auditorium': 'n12',
+    'academic_student_affairs': 'n13',
+    'internal_audit': 'n13',
+    'director_of_finance': 'n14',
+    'biochemistry_lab': 'n14',
+    'school_clinic': 'n11',
+  };
+
+  static String? getNearestNodeId(String locationId) {
+    return locationToNearestNode[locationId];
+  }
+
+  static GraphNode? getNodeById(String id) {
+    try {
+      return roadNodes.firstWhere((node) => node.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static List<GraphEdge> getEdgesForNode(String nodeId) {
+    return roadEdges.where((edge) =>
+    edge.sourceId == nodeId || edge.targetId == nodeId
+    ).toList();
+  }
+
+  static List<String> getNeighbors(String nodeId) {
+    final edges = getEdgesForNode(nodeId);
+    final neighbors = <String>[];
+    for (final edge in edges) {
+      if (edge.sourceId == nodeId) {
+        neighbors.add(edge.targetId);
+      } else if (edge.targetId == nodeId) {
+        neighbors.add(edge.sourceId);
+      }
+    }
+    return neighbors;
+  }
+
+  static double? getEdgeDistance(String nodeId1, String nodeId2) {
+    final edge = roadEdges.firstWhere(
+          (e) =>
+      (e.sourceId == nodeId1 && e.targetId == nodeId2) ||
+          (e.sourceId == nodeId2 && e.targetId == nodeId1),
+      orElse: () => const GraphEdge(sourceId: '', targetId: '', distance: 0),
+    );
+    return edge.distance > 0 ? edge.distance : null;
+  }
+
+  static List<String> getVerifiedLocationNames() {
+    return verifiedLocations.map((loc) => loc.name).toList();
+  }
+
+  static CampusLocation? findLocationByName(String name) {
+    try {
+      return verifiedLocations.firstWhere(
+            (loc) => loc.name.toLowerCase() == name.toLowerCase(),
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static CampusLocation? findLocationById(String id) {
+    try {
+      return verifiedLocations.firstWhere(
+            (loc) => loc.id.toLowerCase() == id.toLowerCase(),
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+}
+
+class GraphNode {
+  final String id;
+  final double lat;
+  final double lng;
+  final String label;
+
+  const GraphNode({
+    required this.id,
+    required this.lat,
+    required this.lng,
+    required this.label,
+  });
+
+  LatLng get position => LatLng(lat, lng);
+
+  @override
+  String toString() => 'GraphNode(id: $id, label: $label, pos: $lat, $lng)';
+}
+
+class GraphEdge {
+  final String sourceId;
+  final String targetId;
+  final double distance;
+
+  const GraphEdge({
+    required this.sourceId,
+    required this.targetId,
+    required this.distance,
+  });
+
+  @override
+  String toString() => 'GraphEdge($sourceId -> $targetId, ${distance}m)';
 }

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +10,7 @@ import '../../main.dart' show AppTheme;
 import '../../config/app_config.dart';
 import '../../models/campus_location.dart';
 import '../../presenters/map_presenter.dart';
+import '../../services/navigation_service.dart';
 import '../../widgets/campus_search_delegate.dart';
 import '../../widgets/location_bottom_sheet.dart';
 import '../../widgets/route_info_card.dart';
@@ -26,14 +27,11 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen>
     with SingleTickerProviderStateMixin
     implements MapViewContract {
-  // ── Map controller ────────────────────────────────────────────
   final Completer<GoogleMapController> _mapControllerCompleter = Completer();
   GoogleMapController? _mapController;
 
-  // ── Presenter ─────────────────────────────────────────────────
   late final MapPresenter _presenter;
 
-  // ── UI state ──────────────────────────────────────────────────
   bool _isLoading = true;
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
@@ -44,45 +42,53 @@ class _MapScreenState extends State<MapScreen>
   bool _isRouting = false;
   List<String> _bookmarkedIds = [];
 
-  // ⭐ LOCATION VARIABLES
   LatLng? _currentPosition;
   bool _isLocationReady = false;
   bool _isLocationLoading = false;
 
-  // Onboarding & Anti-Gravity Glide variables
+  double _currentZoom = 14.0;
+
   bool _isTourActive = false;
   LatLng? _currentUserGlidePosition;
   AnimationController? _glideController;
+  double _currentBearing = 0.0;
 
-  // Map rotation / heading tracking variables
-  bool _followUserHeading = true;
+  static const double MIN_MOVEMENT_THRESHOLD = 2.0;
+  LatLng? _lastStablePosition;
+
+  bool _followUserHeading = false;
   double _currentHeading = 0.0;
   bool _isMapReady = false;
   StreamSubscription<Position>? _headingSubscription;
 
-  // Bottom sheet controller
   PersistentBottomSheetController? _bottomSheetController;
+
+  LatLng? _lastCameraPosition;
+  Timer? _cameraSmoothTimer;
+
+  Timer? _routeRecalculationTimer;
+  CampusRoute? _currentCampusRoute;
+  double _distanceWalked = 0.0;
+  LatLng? _lastRoutePosition;
 
   static final CameraPosition _initialCamera = CameraPosition(
     target: AppConfig.campusCenter,
-    zoom: 16.5,
+    zoom: 14.0,
   );
 
   @override
   void initState() {
     super.initState();
-    _presenter = MapPresenter(this);
+    _presenter = MapPresenter();
+    _presenter.attachView(this);
     _initPresenterAndTour();
-    _startHeadingTracking();
 
-    // ⭐ GET LOCATION ON STARTUP
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initLocationFast();
     });
   }
 
   Future<void> _initPresenterAndTour() async {
-    await AppConfig.loadCalibratedOffsets();
     await _presenter.initialize();
     await _checkFirstTimeTour();
   }
@@ -104,13 +110,14 @@ class _MapScreenState extends State<MapScreen>
   @override
   void dispose() {
     _headingSubscription?.cancel();
+    _cameraSmoothTimer?.cancel();
+    _routeRecalculationTimer?.cancel();
     _mapController?.dispose();
     _glideController?.dispose();
     _presenter.dispose();
     super.dispose();
   }
 
-  // ⭐ LOCATION INITIALIZATION WITH MULTIPLE METHODS
   Future<void> _initLocationFast() async {
     if (_isLocationLoading) return;
 
@@ -121,7 +128,6 @@ class _MapScreenState extends State<MapScreen>
     try {
       print('📍 Getting location...');
 
-      // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         print('⚠️ Location service disabled');
@@ -133,7 +139,6 @@ class _MapScreenState extends State<MapScreen>
         return;
       }
 
-      // Check permission
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         print('⚠️ Location permission denied, requesting...');
@@ -155,7 +160,6 @@ class _MapScreenState extends State<MapScreen>
         return;
       }
 
-      // ⭐ METHOD 1: Try GPS with best accuracy
       Position? position;
       try {
         print('📍 Attempting GPS with best accuracy...');
@@ -170,7 +174,6 @@ class _MapScreenState extends State<MapScreen>
         print('⚠️ GPS failed, trying network location...');
       }
 
-      // ⭐ METHOD 2: If GPS fails, try network location (faster)
       if (position == null) {
         try {
           print('📍 Attempting network location...');
@@ -186,7 +189,6 @@ class _MapScreenState extends State<MapScreen>
         }
       }
 
-      // ⭐ METHOD 3: If both fail, try last known position
       if (position == null) {
         try {
           print('📍 Attempting last known location...');
@@ -199,36 +201,37 @@ class _MapScreenState extends State<MapScreen>
         }
       }
 
-      // ⭐ If we have a position, update the map
       if (position != null) {
         final newPosition = LatLng(position.latitude, position.longitude);
+
+        if (_lastStablePosition == null) {
+          _lastStablePosition = newPosition;
+        }
 
         setState(() {
           _currentPosition = newPosition;
           _isLocationReady = true;
           _isLocationLoading = false;
-          _updateUserMarker();
         });
 
-        // Update the presenter
         _presenter.updateUserPosition(newPosition);
 
         _mapController?.animateCamera(
           CameraUpdate.newCameraPosition(
-            CameraPosition(target: newPosition, zoom: 18.0),
+            CameraPosition(
+              target: newPosition,
+              zoom: 14.0,
+            ),
           ),
         );
         showMessage('📍 Location found');
-
       } else {
-        // ⭐ No position found at all - show warning
         print('❌ No location found from any source');
         setState(() {
           _isLocationLoading = false;
         });
         showMessage('⚠️ Could not find location. Tap Locate to retry.');
       }
-
     } catch (e) {
       print('⚠️ Location init error: $e');
       setState(() {
@@ -238,71 +241,38 @@ class _MapScreenState extends State<MapScreen>
     }
   }
 
-  // Start listening to compass/heading with auto-centering
-  void _startHeadingTracking() {
-    _headingSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 1,
-      ),
-    ).listen((Position position) {
-      if (_followUserHeading && _isMapReady && _mapController != null && _presenter.currentUserPosition != null) {
-        double heading = position.heading;
-        if (heading < 0) heading = 0;
+  void _smoothCameraUpdate({required LatLng target, double? bearing}) {
+    if (_mapController == null) return;
 
-        if (mounted) {
-          setState(() {
-            _currentHeading = heading;
-          });
-        }
-
-        // Auto-center and rotate map during navigation
-        if (_isRouting && _followUserHeading) {
-          _mapController?.animateCamera(
-            CameraUpdate.newCameraPosition(
-              CameraPosition(
-                target: _presenter.currentUserPosition!,
-                zoom: 18.0,
-                bearing: heading,
-              ),
+    _cameraSmoothTimer?.cancel();
+    _cameraSmoothTimer = Timer(const Duration(milliseconds: 100), () {
+      if (_mapController != null && mounted) {
+        _mapController?.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: target,
+              zoom: _currentZoom,
+              bearing: 0.0,
             ),
-          );
-        } else if (_followUserHeading) {
-          // Just rotate without centering when not navigating
-          _mapController?.animateCamera(
-            CameraUpdate.newCameraPosition(
-              CameraPosition(
-                target: _presenter.currentUserPosition!,
-                zoom: 18.0,
-                bearing: heading,
-              ),
-            ),
-          );
-        }
+          ),
+        );
       }
-    }, onError: (e) {
-      print('Heading Stream Error: $e');
     });
   }
 
-  // ADDED: Auto-center map on user location during navigation
   void _autoCenterDuringNavigation() {
     if (_isRouting && _presenter.currentUserPosition != null && _mapController != null) {
-      final bearing = _followUserHeading ? _currentHeading : 0.0;
-
-      _mapController?.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: _presenter.currentUserPosition!,
-            zoom: 18.0,
-            bearing: bearing,
-          ),
-        ),
+      _smoothCameraUpdate(
+        target: _presenter.currentUserPosition!,
+        bearing: 0.0,
       );
     }
   }
 
-  // Toggle auto-rotate mode
+  void _onCameraMove(CameraPosition position) {
+    _currentZoom = position.zoom;
+  }
+
   void _toggleAutoRotate() {
     setState(() {
       _followUserHeading = !_followUserHeading;
@@ -313,7 +283,7 @@ class _MapScreenState extends State<MapScreen>
         CameraUpdate.newCameraPosition(
           CameraPosition(
             target: _presenter.currentUserPosition!,
-            zoom: 17.0,
+            zoom: _currentZoom,
             bearing: 0,
           ),
         ),
@@ -321,84 +291,72 @@ class _MapScreenState extends State<MapScreen>
     }
 
     showMessage(_followUserHeading
-        ? 'Auto-rotate ON - Map faces your direction'
-        : 'Auto-rotate OFF - Map fixed north');
+        ? '🔄 Auto-rotate ON - Map follows your direction'
+        : '🧭 Auto-rotate OFF - Map fixed north');
   }
 
-  // ─────────────────────────────────────────────────────────────
-  //  MapViewContract implementation
-  // ─────────────────────────────────────────────────────────────
   @override
-  void showLoading(bool loading) {
-    if (mounted) setState(() => _isLoading = loading);
+  void showLoading() {
+    if (mounted) setState(() => _isLoading = true);
+  }
+
+  @override
+  void hideLoading() {
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
   void updateMarkers(Set<Marker> newMarkers) {
     if (!mounted) return;
 
-    final userMarker = newMarkers.firstWhere(
-          (m) => m.markerId.value == 'current_user_marker',
-      orElse: () => const Marker(markerId: MarkerId('none')),
-    );
+    final filteredMarkers = newMarkers.where(
+            (m) => m.markerId.value != 'current_user_marker'
+    ).toSet();
 
-    if (userMarker.markerId.value != 'none') {
-      final newPos = userMarker.position;
-      final oldPos = _currentUserGlidePosition;
-
-      if (oldPos == null) {
-        _currentUserGlidePosition = newPos;
-        setState(() => _markers = newMarkers);
-      } else if (oldPos.latitude != newPos.latitude || oldPos.longitude != newPos.longitude) {
-        _glideUserMarker(oldPos, newPos);
-        setState(() {
-          _markers = newMarkers.map((m) {
-            if (m.markerId.value == 'current_user_marker') {
-              return m.copyWith(positionParam: oldPos);
-            }
-            return m;
-          }).toSet();
-        });
-      } else {
-        setState(() => _markers = newMarkers);
-      }
-    } else {
-      setState(() => _markers = newMarkers);
-    }
-  }
-
-  void _glideUserMarker(LatLng from, LatLng to) {
-    _glideController?.dispose();
-    _glideController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-
-    Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _glideController!, curve: Curves.easeInOutCubic),
-    ).addListener(() {
-      if (!mounted) return;
-      final t = _glideController!.value;
-      final lat = from.latitude + (to.latitude - from.latitude) * t;
-      final lng = from.longitude + (to.longitude - from.longitude) * t;
-      final currentGlidePos = LatLng(lat, lng);
-      setState(() {
-        _currentUserGlidePosition = currentGlidePos;
-        _markers = _markers.map((m) {
-          if (m.markerId.value == 'current_user_marker') {
-            return m.copyWith(positionParam: currentGlidePos);
-          }
-          return m;
-        }).toSet();
-      });
-    });
-
-    _glideController!.forward();
+    setState(() => _markers = filteredMarkers);
   }
 
   @override
   void updatePolylines(Set<Polyline> polylines) {
-    if (mounted) setState(() => _polylines = polylines);
+    if (mounted) {
+      setState(() => _polylines = polylines);
+    }
+  }
+
+  @override
+  void updateCameraPosition(LatLng position, {double? zoom, double? bearing}) {
+    _smoothCameraUpdate(target: position, bearing: bearing ?? 0.0);
+  }
+
+  @override
+  void animateCameraToPosition(LatLng position, {double? zoom, double? bearing, double? tilt}) {
+    if (_mapController == null) return;
+    _smoothCameraUpdate(target: position, bearing: bearing ?? 0.0);
+  }
+
+  @override
+  void showLocationDetails(CampusLocation location) {
+    _onLocationSelected(location);
+  }
+
+  @override
+  void showRouteInfo(CampusRoute route) {
+    updateRouteDetails(route.distanceText, route.durationText, route.instructions);
+  }
+
+  @override
+  void clearRouteInfo() {
+    setState(() {
+      _routeDistance = '';
+      _routeDuration = '';
+      _routeInstructions = [];
+      _currentStep = 0;
+    });
+  }
+
+  @override
+  void onLocationPermissionDenied() {
+    showMessage('⚠️ Location permission denied. Please enable in settings.');
   }
 
   @override
@@ -412,22 +370,13 @@ class _MapScreenState extends State<MapScreen>
         _isRouting = instructions.isNotEmpty;
       });
 
-      // Auto-center map when navigation starts
       if (_isRouting && _presenter.currentUserPosition != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _autoCenterDuringNavigation();
         });
+        _startRouteRecalculation();
       }
     }
-  }
-
-  @override
-  void animateCameraTo(LatLng position) {
-    _mapController?.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: position, zoom: 17.5),
-      ),
-    );
   }
 
   @override
@@ -466,7 +415,7 @@ class _MapScreenState extends State<MapScreen>
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.all(16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -476,9 +425,84 @@ class _MapScreenState extends State<MapScreen>
     if (mounted) setState(() => _bookmarkedIds = bookmarkedIds);
   }
 
-  // ─────────────────────────────────────────────────────────────
-  //  Actions
-  // ─────────────────────────────────────────────────────────────
+  void setCurrentRoute(CampusRoute? route) {
+    _currentCampusRoute = route;
+    _distanceWalked = 0.0;
+    _lastRoutePosition = _presenter.currentUserPosition;
+  }
+
+  void _startRouteRecalculation() {
+    _routeRecalculationTimer?.cancel();
+    _routeRecalculationTimer = Timer.periodic(
+      const Duration(seconds: 5),
+          (timer) {
+        _checkAndRecalculateRoute();
+      },
+    );
+  }
+
+  Future<void> _checkAndRecalculateRoute() async {
+    if (!_isRouting || _currentCampusRoute == null) return;
+    if (_presenter.currentUserPosition == null) return;
+
+    final currentPos = _presenter.currentUserPosition!;
+
+    if (_lastRoutePosition != null) {
+      final dist = _haversineDistance(_lastRoutePosition!, currentPos);
+      _distanceWalked += dist;
+    }
+    _lastRoutePosition = currentPos;
+
+    final destination = _getDestinationFromRoute();
+    if (destination != null) {
+      final shouldRecalculate = await _presenter.shouldRecalculateRoute(
+        currentPosition: currentPos,
+        destination: destination,
+        currentRoute: _currentCampusRoute!,
+      );
+
+      if (shouldRecalculate) {
+        print('🔄 Route recalculated due to off-path detection');
+        _distanceWalked = 0.0;
+        _lastRoutePosition = currentPos;
+      }
+    }
+
+    if (_currentCampusRoute != null && mounted) {
+      final eta = _presenter.getETAUpdate(
+        currentPosition: currentPos,
+        route: _currentCampusRoute!,
+        distanceWalked: _distanceWalked,
+      );
+
+      setState(() {
+        _routeDuration = eta;
+      });
+    }
+  }
+
+  LatLng? _getDestinationFromRoute() {
+    if (_currentCampusRoute == null) return null;
+    final points = _currentCampusRoute!.polylinePoints;
+    if (points.isEmpty) return null;
+    return points.last;
+  }
+
+  double _haversineDistance(LatLng p1, LatLng p2) {
+    const double R = 6371000;
+    final double dLat = _toRadians(p2.latitude - p1.latitude);
+    final double dLng = _toRadians(p2.longitude - p1.longitude);
+    final double a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_toRadians(p1.latitude)) *
+            math.cos(_toRadians(p2.latitude)) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return R * c;
+  }
+
+  double _toRadians(double degree) => degree * math.pi / 180;
+
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
     _isMapReady = true;
@@ -486,15 +510,13 @@ class _MapScreenState extends State<MapScreen>
       _mapControllerCompleter.complete(controller);
     }
 
-    // ⭐ After map is created, check location
     Future.delayed(const Duration(milliseconds: 500), () {
       if (_currentPosition == null && _presenter.currentUserPosition == null) {
         _initLocationFast();
       } else if (_presenter.currentUserPosition != null) {
-        _mapController?.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: _presenter.currentUserPosition!, zoom: 18.0),
-          ),
+        _smoothCameraUpdate(
+          target: _presenter.currentUserPosition!,
+          bearing: 0.0,
         );
       }
     });
@@ -503,7 +525,7 @@ class _MapScreenState extends State<MapScreen>
   void _openSearch() async {
     final result = await showSearch<CampusLocation?>(
       context: context,
-      delegate: CampusSearchDelegate(allLocations: _presenter.locations),
+      delegate: CampusSearchDelegate(),
     );
     if (result != null && mounted) {
       _onLocationSelected(result);
@@ -526,9 +548,7 @@ class _MapScreenState extends State<MapScreen>
               onPressed: () {
                 Navigator.pop(context);
                 _stopNavigation();
-                Future.delayed(const Duration(milliseconds: 300), () {
-                  _openDestinationSearch();
-                });
+                _openDestinationSearch();
               },
               child: const Text('Yes, Cancel'),
             ),
@@ -538,7 +558,6 @@ class _MapScreenState extends State<MapScreen>
       return;
     }
 
-    // ⭐ Check if location is available before searching
     if (_presenter.currentUserPosition == null) {
       showMessage('📍 Getting your location...');
       await _initLocationFast();
@@ -550,7 +569,7 @@ class _MapScreenState extends State<MapScreen>
 
     final result = await showSearch<CampusLocation?>(
       context: context,
-      delegate: CampusSearchDelegate(allLocations: _presenter.locations),
+      delegate: CampusSearchDelegate(),
     );
 
     if (result != null && mounted) {
@@ -578,7 +597,12 @@ class _MapScreenState extends State<MapScreen>
           _bottomSheetController?.close();
           _presenter.startNavigation(location);
         },
-        onBookmark: () => _presenter.toggleBookmark(location.id),
+        onBookmark: () {
+          _presenter.toggleBookmark(location.id);
+          setState(() {});
+          final isNowBookmarked = _bookmarkedIds.contains(location.id);
+          showMessage(isNowBookmarked ? '⭐ Bookmarked!' : '📍 Bookmark removed');
+        },
       ),
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -586,71 +610,113 @@ class _MapScreenState extends State<MapScreen>
   }
 
   void _stopNavigation() {
+    _routeRecalculationTimer?.cancel();
     _presenter.stopNavigation();
     setState(() {
       _isRouting = false;
       _routeInstructions = [];
       _currentStep = 0;
+      _polylines.clear();
+      _currentCampusRoute = null;
+      _distanceWalked = 0.0;
+      _lastRoutePosition = null;
     });
   }
 
-  // ⭐ UPDATED: Recenter Camera
   void _recenterCamera() async {
     showMessage('📍 Getting your location...');
-    await _initLocationFast();
+    setState(() => _isLocationLoading = true);
 
-    if (_currentPosition != null) {
-      _mapController?.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: _currentPosition!, zoom: 18.0),
-        ),
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        showMessage('⚠️ Please enable GPS/location services');
+        await Geolocator.openLocationSettings();
+        setState(() => _isLocationLoading = false);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          showMessage('⚠️ Location permission denied');
+          setState(() => _isLocationLoading = false);
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        showMessage('⚠️ Location permanently denied. Please enable in settings.');
+        setState(() => _isLocationLoading = false);
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.best,
+        timeLimit: const Duration(seconds: 10),
       );
-      showMessage('📍 Location found');
-    } else if (_presenter.currentUserPosition != null) {
+
+      final newPosition = LatLng(position.latitude, position.longitude);
+      print('✅ Location found: ${position.latitude}, ${position.longitude}');
+
       setState(() {
-        _currentPosition = _presenter.currentUserPosition;
+        _currentPosition = newPosition;
         _isLocationReady = true;
-        _updateUserMarker();
+        _isLocationLoading = false;
+        _lastStablePosition = newPosition;
       });
+
+      _presenter.updateUserPosition(newPosition);
+
       _mapController?.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: _presenter.currentUserPosition!, zoom: 18.0),
+          CameraPosition(
+            target: newPosition,
+            zoom: _currentZoom,
+          ),
         ),
       );
       showMessage('📍 Location found');
-    } else {
-      showMessage('⚠️ Could not find location. Please enable GPS.');
-      _mapController?.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: AppConfig.campusCenter, zoom: 16.0),
-        ),
-      );
+    } catch (e) {
+      print('❌ Location error: $e');
+      setState(() => _isLocationLoading = false);
+
+      try {
+        Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 5),
+        );
+        final newPosition = LatLng(position.latitude, position.longitude);
+
+        setState(() {
+          _currentPosition = newPosition;
+          _isLocationReady = true;
+        });
+        _presenter.updateUserPosition(newPosition);
+        _mapController?.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: newPosition,
+              zoom: _currentZoom,
+            ),
+          ),
+        );
+        showMessage('📍 Location found (network)');
+      } catch (e2) {
+        showMessage('⚠️ Could not get location. Please enable GPS.');
+        _mapController?.animateCamera(
+          CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: AppConfig.campusCenter,
+              zoom: _currentZoom,
+            ),
+          ),
+        );
+      }
     }
   }
 
-  void _updateUserMarker() {
-    if (_currentPosition == null) return;
-
-    setState(() {
-      _markers.removeWhere((marker) => marker.markerId.value == 'current_user_marker');
-
-      final marker = Marker(
-        markerId: const MarkerId('current_user_marker'),
-        position: _currentPosition!,
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-          BitmapDescriptor.hueBlue,
-        ),
-        infoWindow: const InfoWindow(title: 'You are here'),
-        zIndex: 1000,
-      );
-
-      _markers.add(marker);
-    });
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  //  Build
-  // ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final user = context.watch<User?>();
@@ -664,7 +730,7 @@ class _MapScreenState extends State<MapScreen>
               onMapCreated: _onMapCreated,
               markers: _markers,
               polylines: _polylines,
-              myLocationEnabled: true,
+              myLocationEnabled: false,
               myLocationButtonEnabled: false,
               compassEnabled: true,
               zoomControlsEnabled: false,
@@ -674,6 +740,15 @@ class _MapScreenState extends State<MapScreen>
               style: _darkMapStyle,
               onTap: (_) {
                 _bottomSheetController?.close();
+              },
+              onCameraMove: _onCameraMove,
+              onCameraIdle: () {
+                if (_isRouting && _currentPosition != null) {
+                  _smoothCameraUpdate(
+                    target: _currentPosition!,
+                    bearing: 0.0,
+                  );
+                }
               },
             ),
           ),
@@ -890,7 +965,7 @@ class _MapScreenState extends State<MapScreen>
                 setState(() {
                   _isTourActive = false;
                 });
-                showMessage('Guided tour completed! Enjoy your anti-gravity walk!');
+                showMessage('Guided tour completed!');
               },
               onSkip: () async {
                 final prefs = await SharedPreferences.getInstance();
@@ -1016,9 +1091,6 @@ class _MapScreenState extends State<MapScreen>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  Floating action button widget for map controls
-// ─────────────────────────────────────────────────────────────────
 class _MapFAB extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -1073,9 +1145,6 @@ class _MapFAB extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────
-//  Dark Google Maps style JSON
-// ─────────────────────────────────────────────────────────────────
 const String _darkMapStyle = '''
 [
   {"elementType":"geometry","stylers":[{"color":"#1d2c4d"}]},
