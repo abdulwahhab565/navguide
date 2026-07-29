@@ -109,39 +109,42 @@ class CampusSearchDelegate extends SearchDelegate<CampusLocation?> {
             ),
             itemBuilder: (context, index) {
               final loc = results[index];
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                leading: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+              return Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                  leading: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                    ),
+                    child: Icon(
+                      _iconForCategory(loc.category),
+                      color: AppTheme.primaryLight,
+                      size: 22,
+                    ),
                   ),
-                  child: Icon(
-                    _iconForCategory(loc.category),
-                    color: AppTheme.primaryLight,
-                    size: 22,
+                  title: Text(
+                    loc.name,
+                    style: const TextStyle(
+                      color: AppTheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
                   ),
+                  subtitle: Text(
+                    '${loc.category}${loc.buildingCode != null ? ' • ${loc.buildingCode}' : ''}',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.45),
+                      fontSize: 13,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.north_west_rounded, color: Colors.white30, size: 18),
+                  onTap: () => close(context, loc),
                 ),
-                title: Text(
-                  loc.name,
-                  style: const TextStyle(
-                    color: AppTheme.onSurface,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
-                ),
-                subtitle: Text(
-                  '${loc.category}${loc.buildingCode != null ? ' • ${loc.buildingCode}' : ''}',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.45),
-                    fontSize: 13,
-                  ),
-                ),
-                trailing: const Icon(Icons.north_west_rounded, color: Colors.white30, size: 18),
-                onTap: () => close(context, loc),
               );
             },
           );

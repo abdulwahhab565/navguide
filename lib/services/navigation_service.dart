@@ -36,6 +36,12 @@ class NavigationService {
       return _routeCache[cacheKey]!;
     }
 
+    if (_shouldUseCampusGraph(origin, destination)) {
+      final campusRoute = _generateCampusGraphRoute(origin, destination);
+      _routeCache[cacheKey] = campusRoute;
+      return campusRoute;
+    }
+
     try {
       final apiKey = AppConfig.googleMapsApiKey;
       if (apiKey.isEmpty || apiKey.contains('YOUR_')) {
@@ -91,9 +97,237 @@ class NavigationService {
       print('Directions API failed ($e). Using internal Campus Graph routing.');
     }
 
-    final fallbackRoute = _generateFallbackCampusRoute(origin, destination);
+    final fallbackRoute = _shouldUseCampusGraph(origin, destination)
+        ? _generateCampusGraphRoute(origin, destination)
+        : _generateFallbackCampusRoute(origin, destination);
     _routeCache[cacheKey] = fallbackRoute;
     return fallbackRoute;
+  }
+
+  bool _shouldUseCampusGraph(LatLng origin, LatLng destination) {
+    if (AppConfig.isWithinCampus(origin) || AppConfig.isWithinCampus(destination)) {
+      return true;
+    }
+
+    final campusCenter = AppConfig.campusCenter;
+    final originDistance = _calculateHaversineDistance(origin, campusCenter);
+    final destinationDistance = _calculateHaversineDistance(destination, campusCenter);
+    return originDistance <= 4000 || destinationDistance <= 4000;
+  }
+
+  CampusRoute _generateCampusGraphRoute(LatLng origin, LatLng destination) {
+    final startNodeId = _findClosestNode(origin);
+    final endNodeId = _findClosestNode(destination);
+
+    if (startNodeId == null || endNodeId == null || startNodeId == endNodeId) {
+      return _generateFallbackCampusRoute(origin, destination);
+    }
+
+    final pathNodeIds = _findShortestPath(startNodeId, endNodeId);
+    if (pathNodeIds.isEmpty) {
+      return _generateFallbackCampusRoute(origin, destination);
+    }
+
+    final points = <LatLng>[origin];
+    final startNode = AppConfig.getNodeById(startNodeId);
+    final endNode = AppConfig.getNodeById(endNodeId);
+
+    if (startNode != null) {
+      points.addAll(_interpolatePointsBetween(origin, startNode.position, segments: 3));
+    }
+
+    for (var index = 0; index < pathNodeIds.length; index++) {
+      final nodeId = pathNodeIds[index];
+      final node = AppConfig.getNodeById(nodeId);
+      if (node == null) continue;
+
+      if (index == 0) {
+        points.add(node.position);
+      } else {
+        final previousNode = AppConfig.getNodeById(pathNodeIds[index - 1]);
+        if (previousNode != null) {
+          points.addAll(_interpolatePointsBetween(previousNode.position, node.position, segments: 3));
+        }
+        points.add(node.position);
+      }
+    }
+
+    if (endNode != null) {
+      if (pathNodeIds.isNotEmpty) {
+        final lastNode = AppConfig.getNodeById(pathNodeIds.last);
+        if (lastNode != null) {
+          points.addAll(_interpolatePointsBetween(lastNode.position, endNode.position, segments: 3));
+        }
+      }
+      points.addAll(_interpolatePointsBetween(endNode.position, destination, segments: 3));
+    }
+
+    points.add(destination);
+
+    final cleanedPoints = _deduplicatePoints(points);
+    final distanceMeters = _calculateCampusRouteDistance(origin, destination, pathNodeIds);
+    final durationSeconds = (distanceMeters / 1.35).round();
+
+    final distanceText = distanceMeters >= 1000
+        ? '${(distanceMeters / 1000).toStringAsFixed(1)} km'
+        : '${distanceMeters.toStringAsFixed(0)} m';
+
+    final minutes = (durationSeconds / 60).ceil();
+    final durationText = '$minutes min walk';
+
+    final instructions = _buildCampusInstructions(pathNodeIds);
+
+    return CampusRoute(
+      polylinePoints: cleanedPoints,
+      distanceText: distanceText,
+      durationText: durationText,
+      distanceInMeters: distanceMeters,
+      durationInSeconds: durationSeconds,
+      instructions: instructions,
+    );
+  }
+
+  List<String> _buildCampusInstructions(List<String> pathNodeIds) {
+    if (pathNodeIds.isEmpty) {
+      return ['Follow the connected campus walkway to your destination'];
+    }
+
+    final instructions = <String>['Follow the internal campus walkway network'];
+    for (var index = 0; index < pathNodeIds.length - 1; index++) {
+      final fromNode = AppConfig.getNodeById(pathNodeIds[index]);
+      final toNode = AppConfig.getNodeById(pathNodeIds[index + 1]);
+      final fromLabel = fromNode?.label ?? 'campus junction';
+      final toLabel = toNode?.label ?? 'campus destination';
+      instructions.add('Continue from $fromLabel to $toLabel');
+    }
+    instructions.add('Arrive at your destination on the campus path network');
+    return instructions;
+  }
+
+  double _calculateCampusRouteDistance(LatLng origin, LatLng destination, List<String> pathNodeIds) {
+    if (pathNodeIds.isEmpty) {
+      return _calculateHaversineDistance(origin, destination);
+    }
+
+    var totalDistance = _calculateHaversineDistance(origin, AppConfig.getNodeById(pathNodeIds.first)!.position);
+    for (var index = 0; index < pathNodeIds.length - 1; index++) {
+      final fromNode = AppConfig.getNodeById(pathNodeIds[index]);
+      final toNode = AppConfig.getNodeById(pathNodeIds[index + 1]);
+      if (fromNode != null && toNode != null) {
+        final edgeDistance = AppConfig.getEdgeDistance(fromNode.id, toNode.id);
+        if (edgeDistance != null) {
+          totalDistance += edgeDistance;
+        } else {
+          totalDistance += _calculateHaversineDistance(fromNode.position, toNode.position);
+        }
+      }
+    }
+    totalDistance += _calculateHaversineDistance(AppConfig.getNodeById(pathNodeIds.last)!.position, destination);
+    return totalDistance;
+  }
+
+  List<String> _findShortestPath(String startNodeId, String endNodeId) {
+    final distances = <String, double>{startNodeId: 0.0};
+    final previous = <String, String>{};
+    final unvisited = AppConfig.roadNodes.map((node) => node.id).toList();
+
+    while (unvisited.isNotEmpty) {
+      var currentId = unvisited.first;
+      var currentDistance = distances[currentId] ?? double.infinity;
+
+      for (final nodeId in unvisited) {
+        final nodeDistance = distances[nodeId] ?? double.infinity;
+        if (nodeDistance < currentDistance) {
+          currentId = nodeId;
+          currentDistance = nodeDistance;
+        }
+      }
+
+      unvisited.remove(currentId);
+
+      if (currentId == endNodeId) {
+        return _reconstructPath(previous, currentId);
+      }
+
+      if (currentDistance == double.infinity) {
+        break;
+      }
+
+      final neighbors = AppConfig.getNeighbors(currentId);
+      for (final neighborId in neighbors) {
+        if (!unvisited.contains(neighborId)) {
+          continue;
+        }
+        final edgeDistance = AppConfig.getEdgeDistance(currentId, neighborId);
+        final weight = edgeDistance ?? _calculateHaversineDistance(
+          AppConfig.getNodeById(currentId)!.position,
+          AppConfig.getNodeById(neighborId)!.position,
+        );
+        final candidateDistance = currentDistance + weight;
+        final existingDistance = distances[neighborId] ?? double.infinity;
+        if (candidateDistance < existingDistance) {
+          distances[neighborId] = candidateDistance;
+          previous[neighborId] = currentId;
+        }
+      }
+    }
+
+    return [];
+  }
+
+  List<String> _reconstructPath(Map<String, String> previous, String currentNodeId) {
+    final path = <String>[currentNodeId];
+    var current = currentNodeId;
+    while (previous.containsKey(current)) {
+      current = previous[current]!;
+      path.insert(0, current);
+    }
+    return path;
+  }
+
+  String? _findClosestNode(LatLng position) {
+    String? bestNodeId;
+    var bestDistance = double.infinity;
+
+    for (final node in AppConfig.roadNodes) {
+      final distance = _calculateHaversineDistance(position, node.position);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestNodeId = node.id;
+      }
+    }
+
+    return bestNodeId;
+  }
+
+  List<LatLng> _interpolatePointsBetween(LatLng start, LatLng end, {int segments = 3}) {
+    final points = <LatLng>[];
+    for (var index = 1; index <= segments; index++) {
+      final ratio = index / segments;
+      points.add(
+        LatLng(
+          start.latitude + (end.latitude - start.latitude) * ratio,
+          start.longitude + (end.longitude - start.longitude) * ratio,
+        ),
+      );
+    }
+    return points;
+  }
+
+  List<LatLng> _deduplicatePoints(List<LatLng> points) {
+    final deduped = <LatLng>[];
+    for (final point in points) {
+      if (deduped.isEmpty || !_isSamePoint(deduped.last, point)) {
+        deduped.add(point);
+      }
+    }
+    return deduped;
+  }
+
+  bool _isSamePoint(LatLng first, LatLng second) {
+    const tolerance = 1e-8;
+    return (first.latitude - second.latitude).abs() < tolerance &&
+        (first.longitude - second.longitude).abs() < tolerance;
   }
 
   CampusRoute _generateFallbackCampusRoute(LatLng origin, LatLng destination) {

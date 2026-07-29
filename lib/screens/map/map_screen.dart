@@ -1037,32 +1037,35 @@ class _MapScreenState extends State<MapScreen>
                   itemBuilder: (ctx, i) {
                     final loc = _presenter.locations[i];
                     final isBookmarked = _bookmarkedIds.contains(loc.id);
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                      leading: Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                    return Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                        leading: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+                          ),
+                          child: Icon(_iconForCategory(loc.category), color: AppTheme.primaryLight, size: 20),
                         ),
-                        child: Icon(_iconForCategory(loc.category), color: AppTheme.primaryLight, size: 20),
+                        title: Text(loc.name, style: const TextStyle(color: AppTheme.onSurface, fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: Text(loc.category, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (isBookmarked) const Icon(Icons.bookmark_rounded, color: AppTheme.accent, size: 18),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.chevron_right_rounded, color: Colors.white38, size: 20),
+                          ],
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _onLocationSelected(loc);
+                        },
                       ),
-                      title: Text(loc.name, style: const TextStyle(color: AppTheme.onSurface, fontWeight: FontWeight.w600, fontSize: 14)),
-                      subtitle: Text(loc.category, style: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isBookmarked) const Icon(Icons.bookmark_rounded, color: AppTheme.accent, size: 18),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.chevron_right_rounded, color: Colors.white38, size: 20),
-                        ],
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _onLocationSelected(loc);
-                      },
                     );
                   },
                 ),
