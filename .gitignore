@@ -1,0 +1,44 @@
+# Flutter
+build/
+.dart_tool/
+.pub/
+.pub-cache/
+*.lock
+*.iml
+*.iws
+*.ipr
+.flutter-plugins
+.flutter-plugins-dependencies
+.idea/
+.vscode/
+.DS_Store
+
+# Android
+android/local.properties
+android/app/google-services.json
+android/.gradle/
+android/.idea/
+android/build/
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/Flutter.podspec
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+
+# Keys
+*.key
+*.keystore
+key.properties
+
+# Environment
+.env
+.env.local
+
+# CodeMagic
+*.log
