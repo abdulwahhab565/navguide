@@ -2,170 +2,299 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../models/campus_location.dart';
+import 'location_resolution_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 class PlacesService {
+  final LocationResolutionService _locationResolutionService = LocationResolutionService();
+  Future<List<CampusLocation>>? _resolvedFallbackCampusPlaces;
+
   final List<CampusLocation> _fallbackCampusPlaces = const [
     CampusLocation(
       id: 'loc_01',
-      name: 'UENR Main Administration Block',
+      name: 'UENR Administration',
       category: 'Administration',
-      latitude: 7.34939,
-      longitude: -2.34298,
-      description: 'Central administrative offices including VC, Registrar, and Finance offices.',
-      buildingCode: 'ADM-01',
+      latitude: 7.3495,
+      longitude: -2.3420,
+      description: 'UENR Administration',
+      plusCode: '8MX5+54H',
+      city: 'Sunyani',
+      country: 'Ghana',
       isVerified: true,
     ),
     CampusLocation(
       id: 'loc_02',
-      name: 'University Library (GetFund)',
+      name: 'UENR Engineering Lab',
       category: 'Academic',
-      latitude: 7.34975,
-      longitude: -2.34273,
-      description: 'Main university library offering research materials and quiet study areas.',
-      buildingCode: 'LIB-01',
+      latitude: 7.3498,
+      longitude: -2.3410,
+      description: 'UENR Engineering Lab',
+      plusCode: '8MX5+HJH',
+      city: 'Sunyani',
+      country: 'Ghana',
       isVerified: true,
     ),
     CampusLocation(
       id: 'loc_03',
-      name: 'School of Engineering (SOE) Complex',
-      category: 'Academic',
-      latitude: 7.34994,
-      longitude: -2.34283,
-      description: 'Lecture halls, laboratories, and faculty offices for Engineering students.',
-      buildingCode: 'ENG-101',
+      name: 'UENR IT Department',
+      category: 'Services',
+      latitude: 7.3487,
+      longitude: -2.3418,
+      description: 'UENR IT Department',
+      plusCode: '8MX4+JX6',
+      city: 'Sunyani',
+      country: 'Ghana',
       isVerified: true,
     ),
     CampusLocation(
       id: 'loc_04',
-      name: 'School of Sciences Auditorium',
+      name: 'UENR Library Block',
       category: 'Academic',
-      latitude: 7.35121,
-      longitude: -2.34168,
-      description: 'Large lecture theater used for major university events and lectures.',
-      buildingCode: 'SCI-AUD',
+      latitude: 7.3490,
+      longitude: -2.3412,
+      description: 'UENR Library Block',
+      plusCode: '8MX4+RWC',
+      city: 'Sunyani',
+      country: 'Ghana',
       isVerified: true,
     ),
     CampusLocation(
       id: 'loc_05',
-      name: 'University Health Centre',
-      category: 'Services',
-      latitude: 7.34921,
-      longitude: -2.34315,
-      description: 'Provides 24/7 medical services and emergency response.',
-      buildingCode: 'HC-01',
+      name: 'UENR Auditorium',
+      category: 'Academic',
+      latitude: 7.3492,
+      longitude: -2.3421,
+      description: 'UENR Auditorium',
+      plusCode: '8MX4+PVW',
+      city: 'Sunyani',
+      country: 'Ghana',
       isVerified: true,
     ),
     CampusLocation(
       id: 'loc_06',
-      name: 'UENR Cafeteria / Food Court',
-      category: 'Amenities',
-      latitude: 7.34971,
-      longitude: -2.34238,
-      description: 'Main dining area serving local and continental dishes.',
-      buildingCode: 'CAF-01',
+      name: 'UENR Alumni Driving School',
+      category: 'Academic',
+      latitude: 7.3488,
+      longitude: -2.3435,
+      description: 'UENR Alumni Driving School',
+      plusCode: '8MX4+FV',
+      city: 'Sunyani',
+      country: 'Ghana',
       isVerified: true,
     ),
     CampusLocation(
       id: 'loc_07',
-      name: 'University Sports Complex & Field',
-      category: 'Amenities',
-      latitude: 7.35102,
-      longitude: -2.34264,
-      description: 'Outdoor sports arena for football, basketball, and athletics.',
-      buildingCode: 'SP-01',
+      name: 'Department of Computer Science - Fiapre',
+      category: 'Academic',
+      latitude: 7.3495,
+      longitude: -2.3429,
+      description: 'Department of Computer Science - Fiapre',
+      plusCode: '8MX5+MG9',
+      city: 'Fiapre',
+      country: 'Ghana',
       isVerified: true,
     ),
     CampusLocation(
       id: 'loc_08',
-      name: 'Students Hall of Residence (Block A)',
-      category: 'Amenities',
-      latitude: 7.35072,
-      longitude: -2.34357,
-      description: 'On-campus student accommodation block.',
-      buildingCode: 'HALL-A',
+      name: 'UENR IT Block',
+      category: 'Services',
+      latitude: 7.3496,
+      longitude: -2.3410,
+      description: 'UENR IT Block',
+      plusCode: '9M25+27',
+      city: 'Sunyani',
+      country: 'Ghana',
       isVerified: true,
     ),
     CampusLocation(
       id: 'loc_09',
-      name: 'IT Directorate / Data Centre',
-      category: 'Services',
-      latitude: 7.34950,
-      longitude: -2.34332,
-      description: 'Campus ICT support and network management hub.',
-      buildingCode: 'ICT-01',
+      name: 'Department of Computer Science - Main Campus',
+      category: 'Academic',
+      latitude: 7.3499,
+      longitude: -2.3416,
+      description: 'School of Sciences Lecture Hall',
+      plusCode: '9M25+FC',
+      city: 'Sunyani',
+      country: 'Ghana',
       isVerified: true,
     ),
     CampusLocation(
       id: 'loc_10',
-      name: 'School of Natural Resources Block',
+      name: 'UENR Cafeteria',
+      category: 'Food',
+      latitude: 7.3497,
+      longitude: -2.3424,
+      description: 'UENR Cafeteria',
+      plusCode: '8MX5+R3C',
+      city: 'Sunyani',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_11',
+      name: 'Dean of Students Office',
+      category: 'Administration',
+      latitude: 7.3494,
+      longitude: -2.3417,
+      description: 'Dean of Students Office',
+      plusCode: '9M24+9PC',
+      city: 'Sunyani',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_12',
+      name: 'UENR LT Block',
       category: 'Academic',
-      latitude: 7.35081,
-      longitude: -2.34048,
-      description: 'Departments of Forestry, Environmental Engineering, and Natural Resources.',
-      buildingCode: 'SNR-01',
+      latitude: 7.3496,
+      longitude: -2.3413,
+      description: 'UENR LT Block',
+      plusCode: '9M25+F8F',
+      city: 'Sunyani',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_13',
+      name: 'UENR School Field',
+      category: 'Sports',
+      latitude: 7.3491,
+      longitude: -2.3428,
+      description: 'UENR School Field',
+      plusCode: '9M25+54Q',
+      city: 'Sunyani',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_14',
+      name: 'RCEES',
+      category: 'Academic',
+      latitude: 7.3498,
+      longitude: -2.3414,
+      description: 'RCEES',
+      plusCode: '9M25+GC2',
+      city: 'Sunyani',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_15',
+      name: 'UENR Clinic',
+      category: 'Health',
+      latitude: 7.3490,
+      longitude: -2.3430,
+      description: 'UENR Clinic',
+      plusCode: '8MX4+J6',
+      city: 'Fiapre',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_16',
+      name: 'Syndicated Hall (SH block)',
+      category: 'Academic',
+      latitude: 7.3504,
+      longitude: -2.3406,
+      description: 'Syndicated Hall (SH block)',
+      plusCode: '9M26+22G',
+      city: 'Sunyani',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_17',
+      name: 'UENR Police Station',
+      category: 'Security',
+      latitude: 7.3500,
+      longitude: -2.3414,
+      description: 'UENR Police Station',
+      plusCode: '9M25+F84',
+      city: 'Sunyani',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_18',
+      name: 'App Lab',
+      category: 'Academic',
+      latitude: 7.3499,
+      longitude: -2.3422,
+      description: 'App Lab',
+      plusCode: '8MX5+PG4',
+      city: 'Sunyani',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_19',
+      name: 'UENR Skills Lab',
+      category: 'Academic',
+      latitude: 7.3491,
+      longitude: -2.3419,
+      description: 'UENR Skills Lab',
+      plusCode: '8MX4+HQW',
+      city: 'Sunyani',
+      country: 'Ghana',
+      isVerified: true,
+    ),
+    CampusLocation(
+      id: 'loc_20',
+      name: 'New pavilion',
+      category: 'Academic',
+      latitude: 7.3499,
+      longitude: -2.3422,
+      description: 'New pavilion',
+      plusCode: '8MX5+PG4',
+      city: 'Sunyani',
+      country: 'Ghana',
       isVerified: true,
     ),
   ];
 
   Future<List<CampusLocation>> searchCampusPlaces(String query) async {
-    final trimmedQuery = query.trim().toLowerCase();
-    if (trimmedQuery.isEmpty) return _fallbackCampusPlaces;
+    final campusPlaces = await _getResolvedFallbackCampusPlaces();
+    final trimmedQuery = query.trim();
+    if (trimmedQuery.isEmpty) return campusPlaces;
 
-    try {
-      final apiKey = AppConfig.googleMapsApiKey;
-      if (apiKey.isNotEmpty && !apiKey.contains('YOUR_')) {
-        final url = Uri.parse(
-          'https://maps.googleapis.com/maps/api/place/textsearch/json?'
-              'query=${Uri.encodeComponent('$trimmedQuery UENR Sunyani')}&'
-              'location=${AppConfig.campusCenter.latitude},${AppConfig.campusCenter.longitude}&'
-              'radius=1500&'
-              'key=$apiKey',
-        );
+    final lowerQuery = trimmedQuery.toLowerCase();
+    final matches = campusPlaces.where((loc) {
+      final haystack = [
+        loc.name,
+        loc.category,
+        loc.description,
+        loc.city,
+        loc.country,
+        loc.plusCode ?? '',
+      ].join(' ').toLowerCase();
 
-        final response = await http.get(url).timeout(const Duration(seconds: 5));
+      return haystack.contains(lowerQuery) ||
+          loc.name.toLowerCase().contains(lowerQuery) ||
+          loc.category.toLowerCase().contains(lowerQuery) ||
+          loc.description.toLowerCase().contains(lowerQuery) ||
+          (loc.plusCode ?? '').toLowerCase().contains(lowerQuery);
+    }).toList();
 
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          if (data['status'] == 'OK' && (data['results'] as List).isNotEmpty) {
-            final apiResults = <CampusLocation>[];
-
-            for (var place in data['results']) {
-              final loc = place['geometry']['location'];
-              apiResults.add(
-                CampusLocation(
-                  id: place['place_id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-                  name: place['name'] ?? 'Campus Place',
-                  category: _categorizePlaceType(place['types'] as List? ?? []),
-                  latitude: (loc['lat'] as num).toDouble(),
-                  longitude: (loc['lng'] as num).toDouble(),
-                  description: place['formatted_address'] ?? 'UENR Campus location',
-                  isVerified: true,
-                ),
-              );
-            }
-
-            if (apiResults.isNotEmpty) return apiResults;
-          }
-        }
-      }
-    } catch (e) {
-      print('Places API search error ($e). Searching local campus dataset.');
+    if (matches.isEmpty) {
+      return campusPlaces.where((loc) {
+        final aliases = <String>{
+          loc.name,
+          loc.category,
+          loc.description,
+          '${loc.name} ${loc.category}',
+        };
+        return aliases.any((entry) => entry.toLowerCase().contains(lowerQuery));
+      }).toList();
     }
 
-    return _fallbackCampusPlaces.where((loc) {
-      final nameMatch = loc.name.toLowerCase().contains(trimmedQuery);
-      final categoryMatch = loc.category.toLowerCase().contains(trimmedQuery);
-      final descMatch = loc.description.toLowerCase().contains(trimmedQuery);
-      final codeMatch = loc.buildingCode?.toLowerCase().contains(trimmedQuery) ?? false;
-
-      return nameMatch || categoryMatch || descMatch || codeMatch;
-    }).toList();
+    return matches;
   }
 
   Future<CampusLocation?> getPlaceDetails(String placeId) async {
     final localMatch = _fallbackCampusPlaces.where((l) => l.id == placeId);
-    if (localMatch.isNotEmpty) return localMatch.first;
+    if (localMatch.isNotEmpty) {
+      return _locationResolutionService.resolveLocation(localMatch.first);
+    }
 
     try {
       final apiKey = AppConfig.googleMapsApiKey;
@@ -202,6 +331,12 @@ class PlacesService {
     }
 
     return null;
+  }
+
+  Future<List<CampusLocation>> _getResolvedFallbackCampusPlaces() {
+    return _resolvedFallbackCampusPlaces ??= Future.wait(
+      _fallbackCampusPlaces.map(_locationResolutionService.resolveLocation),
+    );
   }
 
   List<CampusLocation> searchByCategory(String category) {

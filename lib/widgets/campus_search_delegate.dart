@@ -7,7 +7,7 @@ class CampusSearchDelegate extends SearchDelegate<CampusLocation?> {
   final PlacesService _placesService = PlacesService();
 
   @override
-  String get searchFieldLabel => 'Search UENR buildings, halls...';
+  String get searchFieldLabel => 'Where do you want to go?';
 
   @override
   ThemeData appBarTheme(BuildContext context) {

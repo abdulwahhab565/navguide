@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../models/campus_location.dart';
+import 'location_resolution_service.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final LocationResolutionService _locationResolutionService = LocationResolutionService();
 
   CollectionReference get _usersRef => _firestore.collection('users');
   CollectionReference get _locationsRef => _firestore.collection('campus_locations');
@@ -58,15 +60,15 @@ class FirestoreService {
           .get();
 
       if (querySnapshot.docs.isEmpty) {
-        return _getDefaultCampusLocations();
+        return _resolveLocations(_getDefaultCampusLocations());
       }
 
-      return querySnapshot.docs
+      return _resolveLocations(querySnapshot.docs
           .map((doc) => CampusLocation.fromMap(doc.data() as Map<String, dynamic>))
-          .toList();
+          .toList());
     } catch (e) {
       print('Firestore location fetch error ($e). Falling back to local dataset.');
-      return _getDefaultCampusLocations();
+      return _resolveLocations(_getDefaultCampusLocations());
     }
   }
 
@@ -77,9 +79,9 @@ class FirestoreService {
           .where('isVerified', isEqualTo: true)
           .get();
 
-      return querySnapshot.docs
+        return _resolveLocations(querySnapshot.docs
           .map((doc) => CampusLocation.fromMap(doc.data() as Map<String, dynamic>))
-          .toList();
+          .toList());
     } catch (e) {
       print('Error fetching category locations: $e');
       return [];
@@ -88,7 +90,8 @@ class FirestoreService {
 
   Future<void> addCampusLocation(CampusLocation location) async {
     try {
-      await _locationsRef.doc(location.id).set(location.toMap());
+      final resolvedLocation = await _locationResolutionService.resolveLocation(location);
+      await _locationsRef.doc(resolvedLocation.id).set(resolvedLocation.toMap());
     } catch (e) {
       throw 'Failed to add campus location: ${e.toString()}';
     }
@@ -96,7 +99,7 @@ class FirestoreService {
 
   Future<void> seedDefaultLocations() async {
     try {
-      final defaults = _getDefaultCampusLocations();
+      final defaults = await _resolveLocations(_getDefaultCampusLocations());
       final batch = _firestore.batch();
 
       for (var location in defaults) {
@@ -111,97 +114,233 @@ class FirestoreService {
     }
   }
 
+  Future<List<CampusLocation>> _resolveLocations(List<CampusLocation> locations) {
+    return Future.wait(
+      locations.map(_locationResolutionService.resolveLocation),
+    );
+  }
+
   List<CampusLocation> _getDefaultCampusLocations() {
-    return [
-      const CampusLocation(
+    return const [
+      CampusLocation(
         id: 'loc_01',
-        name: 'UENR Main Administration Block',
+        name: 'UENR Administration',
         category: 'Administration',
-        latitude: 7.34939,
-        longitude: -2.34298,
-        description: 'Central administrative offices including Vice Chancellor, Registrar, and Finance offices.',
-        buildingCode: 'ADM-01',
+        latitude: 7.3495,
+        longitude: -2.3420,
+        description: 'UENR Administration',
+        plusCode: '8MX5+54H',
+        city: 'Sunyani',
+        country: 'Ghana',
       ),
-      const CampusLocation(
+      CampusLocation(
         id: 'loc_02',
-        name: 'University Library (GetFund)',
+        name: 'UENR Engineering Lab',
         category: 'Academic',
-        latitude: 7.34975,
-        longitude: -2.34273,
-        description: 'Main university library offering research materials, e-library facilities, and quiet study areas.',
-        buildingCode: 'LIB-01',
+        latitude: 7.3498,
+        longitude: -2.3410,
+        description: 'UENR Engineering Lab',
+        plusCode: '8MX5+HJH',
+        city: 'Sunyani',
+        country: 'Ghana',
       ),
-      const CampusLocation(
+      CampusLocation(
         id: 'loc_03',
-        name: 'School of Engineering (SOE) Complex',
-        category: 'Academic',
-        latitude: 7.34994,
-        longitude: -2.34283,
-        description: 'Lecture halls, laboratories, and faculty offices for Engineering students.',
-        buildingCode: 'ENG-101',
+        name: 'UENR IT Department',
+        category: 'Services',
+        latitude: 7.3487,
+        longitude: -2.3418,
+        description: 'UENR IT Department',
+        plusCode: '8MX4+JX6',
+        city: 'Sunyani',
+        country: 'Ghana',
       ),
-      const CampusLocation(
+      CampusLocation(
         id: 'loc_04',
-        name: 'School of Sciences Auditorium',
+        name: 'UENR Library Block',
         category: 'Academic',
-        latitude: 7.35121,
-        longitude: -2.34168,
-        description: 'Large lecture theater used for major university lectures, matriculation, and events.',
-        buildingCode: 'SCI-AUD',
+        latitude: 7.3490,
+        longitude: -2.3412,
+        description: 'UENR Library Block',
+        plusCode: '8MX4+RWC',
+        city: 'Sunyani',
+        country: 'Ghana',
       ),
-      const CampusLocation(
+      CampusLocation(
         id: 'loc_05',
-        name: 'University Health Centre',
-        category: 'Services',
-        latitude: 7.34921,
-        longitude: -2.34315,
-        description: 'Provides 24/7 medical services, consultation, and emergency response for students and staff.',
-        buildingCode: 'HC-01',
-      ),
-      const CampusLocation(
-        id: 'loc_06',
-        name: 'UENR Cafeteria / Food Court',
-        category: 'Amenities',
-        latitude: 7.34971,
-        longitude: -2.34238,
-        description: 'Main dining area serving local and continental dishes, snacks, and beverages.',
-        buildingCode: 'CAF-01',
-      ),
-      const CampusLocation(
-        id: 'loc_07',
-        name: 'University Sports Complex & Field',
-        category: 'Amenities',
-        latitude: 7.35102,
-        longitude: -2.34264,
-        description: 'Outdoor sports arena for football, basketball, athletics, and university games.',
-        buildingCode: 'SP-01',
-      ),
-      const CampusLocation(
-        id: 'loc_08',
-        name: 'Students Hall of Residence (Block A)',
-        category: 'Amenities',
-        latitude: 7.35072,
-        longitude: -2.34357,
-        description: 'On-campus student accommodation for undergraduate students.',
-        buildingCode: 'HALL-A',
-      ),
-      const CampusLocation(
-        id: 'loc_09',
-        name: 'IT Directorate / Data Centre',
-        category: 'Services',
-        latitude: 7.34950,
-        longitude: -2.34332,
-        description: 'Campus ICT support, student portal assistance, and network management hub.',
-        buildingCode: 'ICT-01',
-      ),
-      const CampusLocation(
-        id: 'loc_10',
-        name: 'School of Natural Resources Block',
+        name: 'UENR Auditorium',
         category: 'Academic',
-        latitude: 7.35081,
-        longitude: -2.34048,
-        description: 'Departments of Forestry, Environmental Engineering, and Natural Resources.',
-        buildingCode: 'SNR-01',
+        latitude: 7.3492,
+        longitude: -2.3421,
+        description: 'UENR Auditorium',
+        plusCode: '8MX4+PVW',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_06',
+        name: 'UENR Alumni Driving School',
+        category: 'Academic',
+        latitude: 7.3488,
+        longitude: -2.3435,
+        description: 'UENR Alumni Driving School',
+        plusCode: '8MX4+FV',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_07',
+        name: 'Department of Computer Science - Fiapre',
+        category: 'Academic',
+        latitude: 7.3495,
+        longitude: -2.3429,
+        description: 'Department of Computer Science - Fiapre',
+        plusCode: '8MX5+MG9',
+        city: 'Fiapre',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_08',
+        name: 'UENR IT Block',
+        category: 'Services',
+        latitude: 7.3496,
+        longitude: -2.3410,
+        description: 'UENR IT Block',
+        plusCode: '9M25+27',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_09',
+        name: 'Department of Computer Science - Main Campus',
+        category: 'Academic',
+        latitude: 7.3499,
+        longitude: -2.3416,
+        description: 'School of Sciences Lecture Hall',
+        plusCode: '9M25+FC',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_10',
+        name: 'UENR Cafeteria',
+        category: 'Food',
+        latitude: 7.3497,
+        longitude: -2.3424,
+        description: 'UENR Cafeteria',
+        plusCode: '8MX5+R3C',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_11',
+        name: 'Dean of Students Office',
+        category: 'Administration',
+        latitude: 7.3494,
+        longitude: -2.3417,
+        description: 'Dean of Students Office',
+        plusCode: '9M24+9PC',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_12',
+        name: 'UENR LT Block',
+        category: 'Academic',
+        latitude: 7.3496,
+        longitude: -2.3413,
+        description: 'UENR LT Block',
+        plusCode: '9M25+F8F',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_13',
+        name: 'UENR School Field',
+        category: 'Sports',
+        latitude: 7.3491,
+        longitude: -2.3428,
+        description: 'UENR School Field',
+        plusCode: '9M25+54Q',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_14',
+        name: 'RCEES',
+        category: 'Academic',
+        latitude: 7.3498,
+        longitude: -2.3414,
+        description: 'RCEES',
+        plusCode: '9M25+GC2',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_15',
+        name: 'UENR Clinic',
+        category: 'Health',
+        latitude: 7.3490,
+        longitude: -2.3430,
+        description: 'UENR Clinic',
+        plusCode: '8MX4+J6',
+        city: 'Fiapre',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_16',
+        name: 'Syndicated Hall (SH block)',
+        category: 'Academic',
+        latitude: 7.3504,
+        longitude: -2.3406,
+        description: 'Syndicated Hall (SH block)',
+        plusCode: '9M26+22G',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_17',
+        name: 'UENR Police Station',
+        category: 'Security',
+        latitude: 7.3500,
+        longitude: -2.3414,
+        description: 'UENR Police Station',
+        plusCode: '9M25+F84',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_18',
+        name: 'App Lab',
+        category: 'Academic',
+        latitude: 7.3499,
+        longitude: -2.3422,
+        description: 'App Lab',
+        plusCode: '8MX5+PG4',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_19',
+        name: 'UENR Skills Lab',
+        category: 'Academic',
+        latitude: 7.3491,
+        longitude: -2.3419,
+        description: 'UENR Skills Lab',
+        plusCode: '8MX4+HQW',
+        city: 'Sunyani',
+        country: 'Ghana',
+      ),
+      CampusLocation(
+        id: 'loc_20',
+        name: 'New pavilion',
+        category: 'Academic',
+        latitude: 7.3499,
+        longitude: -2.3422,
+        description: 'New pavilion',
+        plusCode: '8MX5+PG4',
+        city: 'Sunyani',
+        country: 'Ghana',
       ),
     ];
   }

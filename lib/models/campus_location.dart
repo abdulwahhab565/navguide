@@ -11,6 +11,9 @@ class CampusLocation {
   final bool isVerified;
   final String? buildingCode;
   final bool isBookmarked;
+  final String? plusCode;
+  final String city;
+  final String country;
 
   const CampusLocation({
     required this.id,
@@ -22,6 +25,9 @@ class CampusLocation {
     this.isVerified = true,
     this.buildingCode,
     this.isBookmarked = false,
+    this.plusCode,
+    this.city = 'Sunyani',
+    this.country = 'Ghana',
   });
 
   LatLng get latLng => LatLng(latitude, longitude);
@@ -94,6 +100,9 @@ class CampusLocation {
       'isVerified': isVerified,
       'buildingCode': buildingCode,
       'isBookmarked': isBookmarked,
+      'plusCode': plusCode,
+      'city': city,
+      'country': country,
     };
   }
 
@@ -108,6 +117,9 @@ class CampusLocation {
       isVerified: map['isVerified'] ?? true,
       buildingCode: map['buildingCode'],
       isBookmarked: map['isBookmarked'] ?? false,
+      plusCode: map['plusCode'] as String?,
+      city: map['city'] as String? ?? 'Sunyani',
+      country: map['country'] as String? ?? 'Ghana',
     );
   }
 
@@ -121,6 +133,9 @@ class CampusLocation {
     bool? isVerified,
     String? buildingCode,
     bool? isBookmarked,
+    String? plusCode,
+    String? city,
+    String? country,
   }) {
     return CampusLocation(
       id: id ?? this.id,
@@ -132,6 +147,9 @@ class CampusLocation {
       isVerified: isVerified ?? this.isVerified,
       buildingCode: buildingCode ?? this.buildingCode,
       isBookmarked: isBookmarked ?? this.isBookmarked,
+      plusCode: plusCode ?? this.plusCode,
+      city: city ?? this.city,
+      country: country ?? this.country,
     );
   }
 
